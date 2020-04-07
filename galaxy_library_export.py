@@ -10,7 +10,7 @@ dataId1 = 170
 dataId2 = 239
 titleId1 = 171
 titleId2 = 244
-# Create a view of OwnedGames joined on GamePieces for a full OwnedGames db
+# Create a view of OwnedGames joined on GamePieces for a full OwnedGames DB
 owned_games_query = """CREATE TEMP VIEW MasterList AS
 				SELECT GamePieces.releaseKey,GamePieces.gamePieceTypeId,GamePieces.value FROM OwnedGames
 				JOIN GamePieces ON OwnedGames.releaseKey = GamePieces.releaseKey;"""
@@ -42,14 +42,13 @@ with open("gameDB.csv", "w", encoding='utf-8') as csvfile:
 			row = info
 			row['title'] = result[0].split('"')[3]
 			row['platformList'] = []
-			# for releaseKey in result[1].split(","):
 			if any(platform in releaseKey for platform in platforms for releaseKey in result[1].split(",")):
-				row['platformList'] = [platforms[platform] for releaseKey in result[1].split(",") for platform in platforms if platform in releaseKey]
+				row['platformList'] = set(platforms[platform] for releaseKey in result[1].split(",") for platform in platforms if platform in releaseKey)
 			else:
 				row['platformList'].append("Placeholder")
 			row['releaseDate'] = time.strftime("%y-%m-%d", time.localtime(info['releaseDate']))
 			for key, value in row.items():
-				if type(value) == list:
+				if type(value) == list or type(value) == set:
 					row[key] = ",".join(value)
 			writer.writerow(row)
 		else:
