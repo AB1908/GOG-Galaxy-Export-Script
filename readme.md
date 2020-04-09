@@ -47,6 +47,7 @@ Question marks beside a platform mean it is unclear what platform it refers to. 
 - [x] GameSessions
 - [x] GG.deals
 - [x] Glyph
+- [x] GOG
 - [x] Google Stadia
 - [x] Green Man Gaming
 - [x] Guild Wars
