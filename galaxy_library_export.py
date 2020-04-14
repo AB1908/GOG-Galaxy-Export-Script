@@ -25,14 +25,14 @@ owned_games_query = """CREATE TEMP VIEW MasterList AS
 				JOIN GamePieces ON OwnedGames.releaseKey = GamePieces.releaseKey;"""
 # Create view of unique items using details
 unique_owned_games_query = """CREATE TEMP VIEW UniqueMasterList AS
-				SELECT DISTINCT(MasterList.value) AS info,MasterCopy.value AS title FROM MasterList, MasterList
+				SELECT DISTINCT(MasterList.value) AS metadata,MasterCopy.value AS title FROM MasterList, MasterList
 				AS MasterCopy WHERE ((MasterList.gamePieceTypeId = {}) OR (MasterList.GamePieceTypeId = {})) AND
 				((MasterCopy.gamePieceTypeId = {}) OR (MasterCopy.gamePieceTypeId = {})) AND
 				(MasterCopy.releaseKey = MasterList.releaseKey);""".format(originalMetaID, metaID, originalTitleID, titleID)
 # Display each game and its details along with corresponding release key grouped by details
-aggr_game_data = """SELECT UniqueMasterList.title, GROUP_CONCAT(DISTINCT MasterList.releaseKey), UniqueMasterList.info
-				FROM UniqueMasterList, MasterList WHERE UniqueMasterList.info = MasterList.value
-				GROUP BY UniqueMasterList.info ORDER BY UniqueMasterList.title;"""
+aggr_game_data = """SELECT UniqueMasterList.title, GROUP_CONCAT(DISTINCT MasterList.releaseKey), UniqueMasterList.metadata
+				FROM UniqueMasterList, MasterList WHERE UniqueMasterList.metadata = MasterList.value
+				GROUP BY UniqueMasterList.metadata ORDER BY UniqueMasterList.title;"""
 cursor.execute(owned_games_query)
 cursor.execute(unique_owned_games_query)
 cursor.execute(aggr_game_data)
@@ -45,15 +45,15 @@ with open("gameDB.csv", "w", encoding='utf-8') as csvfile:
 		if result:
 			# JSON string needs to be converted to dict
 			# For json.load() to work correctly, all double quotes must be correctly escaped
-			info = json.loads(result[2].replace('"','\"'))
-			row = info
+			metadata = json.loads(result[2].replace('"','\"'))
+			row = metadata
 			row['title'] = result[0].split('"')[3]
 			row['platformList'] = []
 			if any(platform in releaseKey for platform in platforms for releaseKey in result[1].split(",")):
-				row['platformList'] = set(platforms[platform] for releaseKey in result[1].split(",") for platform in platforms if platform in releaseKey)
+				row['platformList'] = set(platforms[platform] for releaseKey in result[1].split(",") for platform in platforms if releaseKey.startswith(platform))
 			else:
 				row['platformList'].append("Placeholder")
-			row['releaseDate'] = time.strftime("%Y-%m-%d", time.localtime(info['releaseDate']))
+			row['releaseDate'] = time.strftime("%Y-%m-%d", time.localtime(metadata['releaseDate']))
 			for key, value in row.items():
 				if type(value) == list or type(value) == set:
 					row[key] = ",".join(value)
