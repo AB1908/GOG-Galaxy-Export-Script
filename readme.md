@@ -85,8 +85,8 @@ Question marks beside a platform mean it is unclear what platform it refers to. 
 - [x] Sega 32X
 - [x] Sega CD
 - [x] Sega Genesis
+- [x] Sega Master System
 - [x] Sega Saturn
-- [x] Sms??
 - [x] Sony PlayStation® 2
 - [x] Sony PlayStation® Network
 - [x] Sony PlayStation® Portable
@@ -111,6 +111,10 @@ Check the [Wiki tab](https://github.com/AB1908/GOG-Galaxy-Export-Script/wiki).
 ## Roadmap 
 
 Check the [Projects tab](https://github.com/AB1908/GOG-Galaxy-Export-Script/projects).
+
+## Known Issues
+
+Some games are listed twice. Check [#5](https://github.com/AB1908/GOG-Galaxy-Export-Script/issues/5).
 
 ## Contribution
 
