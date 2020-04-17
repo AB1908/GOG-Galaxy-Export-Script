@@ -48,6 +48,7 @@ with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
 			metadata = json.loads(result[2].replace('"','\"'))
 			row = metadata
 			row['title'] = result[0].split('"')[3]
+			row['title'] = row['title'].replace("\\","")
 			row['platformList'] = []
 			if any(platform in releaseKey for platform in platforms for releaseKey in result[1].split(",")):
 				row['platformList'] = set(platforms[platform] for releaseKey in result[1].split(",") for platform in platforms if releaseKey.startswith(platform))
