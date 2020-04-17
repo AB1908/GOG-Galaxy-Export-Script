@@ -53,9 +53,14 @@ with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
 				row['platformList'] = set(platforms[platform] for releaseKey in result[1].split(",") for platform in platforms if releaseKey.startswith(platform))
 			else:
 				row['platformList'].append("Placeholder")
-			row['releaseDate'] = time.strftime("%Y-%m-%d", time.localtime(metadata['releaseDate']))
+			if metadata['releaseDate']:
+				row['releaseDate'] = time.strftime("%Y-%m-%d", time.localtime(metadata['releaseDate']))
+			else:
+				row['releaseDate'] = metadata['releaseDate']
 			if metadata['criticsScore']:
 				row['criticsScore'] = round(metadata['criticsScore'])
+			else:
+				row['criticsScore'] = metadata['criticsScore']
 			for key, value in row.items():
 				if type(value) == list or type(value) == set:
 					row[key] = ",".join(value)
