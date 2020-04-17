@@ -54,6 +54,8 @@ with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
 			else:
 				row['platformList'].append("Placeholder")
 			row['releaseDate'] = time.strftime("%Y-%m-%d", time.localtime(metadata['releaseDate']))
+			if metadata['criticsScore']:
+				row['criticsScore'] = round(metadata['criticsScore'])
 			for key, value in row.items():
 				if type(value) == list or type(value) == set:
 					row[key] = ",".join(value)
