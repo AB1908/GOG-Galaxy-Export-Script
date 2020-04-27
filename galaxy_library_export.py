@@ -19,10 +19,10 @@ cursor.execute("""SELECT id FROM GamePieceTypes WHERE type = 'originalTitle'""")
 originalTitleID = cursor.fetchall()[0][0]
 cursor.execute("""SELECT id FROM GamePieceTypes WHERE type = 'title'""")
 titleID = cursor.fetchall()[0][0]
-# Create a view of OwnedGames joined on GamePieces for a full OwnedGames DB
+# Create a view of GameLinks joined on GamePieces for a full GameLinks DB
 owned_games_query = """CREATE TEMP VIEW MasterList AS
-				SELECT GamePieces.releaseKey, GamePieces.gamePieceTypeId, GamePieces.value FROM OwnedGames
-				JOIN GamePieces ON OwnedGames.releaseKey = GamePieces.releaseKey;"""
+				SELECT GamePieces.releaseKey, GamePieces.gamePieceTypeId, GamePieces.value FROM GameLinks
+				JOIN GamePieces ON GameLinks.releaseKey = GamePieces.releaseKey;"""
 # Create view of unique items using details
 unique_owned_games_query = """CREATE TEMP VIEW UniqueMasterList AS
 				SELECT DISTINCT(MasterList.value) AS metadata, MasterCopy.value AS title FROM MasterList, MasterList
