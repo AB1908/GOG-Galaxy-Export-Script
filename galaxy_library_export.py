@@ -11,33 +11,35 @@ conn = sqlite3.connect(database_location)
 cursor = conn.cursor()
 
 # gamePieceTypeId is stored in GamePieceTypes
-cursor.execute("""SELECT id FROM GamePieceTypes WHERE type = 'originalMeta'""")
-originalMetaID = cursor.fetchall()[0][0]
-cursor.execute("""SELECT id FROM GamePieceTypes WHERE type = 'meta'""")
-metaID = cursor.fetchall()[0][0]
-cursor.execute("""SELECT id FROM GamePieceTypes WHERE type = 'originalTitle'""")
-originalTitleID = cursor.fetchall()[0][0]
-cursor.execute("""SELECT id FROM GamePieceTypes WHERE type = 'title'""")
-titleID = cursor.fetchall()[0][0]
-# Create a view of GameLinks joined on GamePieces for a full GameLinks DB
-owned_games_query = """CREATE TEMP VIEW MasterList AS
+cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='originalMeta'""")
+originalMetaID = cursor.fetchall()[0]
+cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='meta'""")
+metaID = cursor.fetchall()[0]
+cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='originalTitle'""")
+originalTitleID = cursor.fetchall()[0]
+cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='title'""")
+titleID = cursor.fetchone()[0]
+cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='allGameReleases'""")
+releasesList = cursor.fetchone()[0]
+# Create a view of GameLinks joined on GamePieces for a full owned game data DB
+owned_game_database = """CREATE TEMP VIEW MasterList AS
 				SELECT GamePieces.releaseKey, GamePieces.gamePieceTypeId, GamePieces.value FROM GameLinks
 				JOIN GamePieces ON GameLinks.releaseKey = GamePieces.releaseKey;"""
-# Create view of unique items using details
-unique_owned_games_query = """CREATE TEMP VIEW UniqueMasterList AS
-				SELECT DISTINCT(MasterList.value) AS metadata, MasterCopy.value AS title FROM MasterList, MasterList
-				AS MasterCopy WHERE ((MasterList.gamePieceTypeId = {}) OR (MasterList.GamePieceTypeId = {})) AND
-				((MasterCopy.gamePieceTypeId = {}) OR (MasterCopy.gamePieceTypeId = {})) AND
-				(MasterCopy.releaseKey = MasterList.releaseKey);""".format(originalMetaID, metaID, originalTitleID, titleID)
-# Display each game and its details along with corresponding release key grouped by details
-aggr_game_data = """SELECT UniqueMasterList.title, GROUP_CONCAT(DISTINCT MasterList.releaseKey), UniqueMasterList.metadata
-				FROM UniqueMasterList, MasterList WHERE UniqueMasterList.metadata = MasterList.value
-				GROUP BY UniqueMasterList.metadata ORDER BY UniqueMasterList.title;"""
-cursor.execute(owned_games_query)
-cursor.execute(unique_owned_games_query)
-cursor.execute(aggr_game_data)
+# Create filtered view of owned games with game times using multiple joins
+owned_game_filtered_data = """CREATE TEMP VIEW MasterDB AS SELECT DISTINCT(MasterList.releaseKey) AS releaseKey,
+				MasterList.value AS title, MC1.value AS metadata, MC2.value AS platformList, GameTimes.minutesInGame AS time
+				from MasterList, MasterList AS MC1, MasterList AS MC2, GameTimes WHERE (((MasterList.gamePieceTypeId={}) OR
+				(MasterList.gamePieceTypeId={})) AND ((MC1.gamePieceTypeId={}) OR (MC1.gamePieceTypeId={}))) AND
+				MC1.releaseKey=MasterList.releaseKey AND MC2.gamePieceTypeId={} AND MC2.releaseKey=MasterList.releaseKey
+				AND GameTimes.releaseKey=MasterList.releaseKey ORDER BY title;""".format(originalTitleID, titleID, originalMetaID, metaID, releasesList)
+# Display each game and its details along with corresponding release key grouped by releasesList
+unique_game_data = """SELECT GROUP_CONCAT(DISTINCT MasterDB.releaseKey), MasterDB.title, MasterDB.metadata, sum(MasterDB.time)
+				FROM MasterDB GROUP BY MasterDB.platformList ORDER BY MasterDB.title;"""
+cursor.execute(owned_game_database)
+cursor.execute(owned_game_filtered_data)
+cursor.execute(unique_game_data)
 with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
-	fieldnames = ['title', 'platformList', 'developers', 'publishers', 'releaseDate', 'genres', 'themes', 'criticsScore']
+	fieldnames = ['title', 'platformList', 'developers', 'publishers', 'releaseDate', 'genres', 'themes', 'criticsScore', 'gameMins']
 	writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 	writer.writeheader()
 	while True:
@@ -47,11 +49,11 @@ with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
 			# For json.load() to work correctly, all double quotes must be correctly escaped
 			metadata = json.loads(result[2].replace('"','\"'))
 			row = metadata
-			row['title'] = result[0].split('"')[3]
+			row['title'] = result[1].split('"')[3]
 			row['title'] = row['title'].replace("\\","")
 			row['platformList'] = []
-			if any(platform in releaseKey for platform in platforms for releaseKey in result[1].split(",")):
-				row['platformList'] = set(platforms[platform] for releaseKey in result[1].split(",") for platform in platforms if releaseKey.startswith(platform))
+			if any(platform in releaseKey for platform in platforms for releaseKey in result[0].split(",")):
+				row['platformList'] = set(platforms[platform] for releaseKey in result[0].split(",") for platform in platforms if releaseKey.startswith(platform))
 			else:
 				row['platformList'].append("Placeholder")
 			if metadata['releaseDate']:
@@ -65,6 +67,7 @@ with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
 			for key, value in row.items():
 				if type(value) == list or type(value) == set:
 					row[key] = ",".join(value)
+			row['gameMins'] = result[3]
 			writer.writerow(row)
 		else:
 			break
