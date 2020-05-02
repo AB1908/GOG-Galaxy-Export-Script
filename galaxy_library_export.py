@@ -12,11 +12,11 @@ cursor = conn.cursor()
 
 # gamePieceTypeId is stored in GamePieceTypes
 cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='originalMeta'""")
-originalMetaID = cursor.fetchall()[0]
+originalMetaID = cursor.fetchone()[0]
 cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='meta'""")
-metaID = cursor.fetchall()[0]
+metaID = cursor.fetchone()[0]
 cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='originalTitle'""")
-originalTitleID = cursor.fetchall()[0]
+originalTitleID = cursor.fetchone()[0]
 cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='title'""")
 titleID = cursor.fetchone()[0]
 cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='allGameReleases'""")
