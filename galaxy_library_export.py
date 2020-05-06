@@ -2,6 +2,7 @@ import sqlite3
 import json
 import time
 import csv
+import re
 
 
 database_location = "C:\\ProgramData\\GOG.com\\Galaxy\\storage\\galaxy-2.0.db"
@@ -38,6 +39,7 @@ unique_game_data = """SELECT GROUP_CONCAT(DISTINCT MasterDB.releaseKey), MasterD
 cursor.execute(owned_game_database)
 cursor.execute(owned_game_filtered_data)
 cursor.execute(unique_game_data)
+title_regex = re.compile(r"""(?<=\{"title":").*(?="})""")
 with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
 	fieldnames = ['title', 'platformList', 'developers', 'publishers', 'releaseDate', 'genres', 'themes', 'criticsScore', 'gameMins']
 	writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -49,8 +51,8 @@ with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
 			# For json.load() to work correctly, all double quotes must be correctly escaped
 			metadata = json.loads(result[2].replace('"','\"'))
 			row = metadata
-			row['title'] = result[1].split('"')[3]
-			row['title'] = row['title'].replace("\\","")
+			row['title'] = result[1].replace("\\","")
+			row['title'] = title_regex.findall(row["title"])[0]
 			row['platformList'] = []
 			if any(platform in releaseKey for platform in platforms for releaseKey in result[0].split(",")):
 				row['platformList'] = set(platforms[platform] for releaseKey in result[0].split(",") for platform in platforms if releaseKey.startswith(platform))
