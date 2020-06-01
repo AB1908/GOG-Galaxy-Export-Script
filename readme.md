@@ -6,8 +6,8 @@ This script helps a user export their GOG Galaxy 2.0 Library.
 
 Simply run the script and it'll create a CSV in the current working directory of a list of all the games you've added to the launcher. The output is in the following format:
 
-| Title | List of Platforms | Developers | Publishers | Release Date | Genres | Themes | Critics Score | Time Played |
-| ----- | ----------------- | ---------- | ---------- | ------------ | ------ | ------ | ------------- | ----------- |
+| Title | List of Platforms | Developers | Publishers | Release Date | Genres | Themes | Critics Score | Time Played | Images |
+| ----- | ----------------- | ---------- | ---------- | ------------ | ------ | ------ | ------------- | ----------- | ------ |
 
 ## Dependencies
 
