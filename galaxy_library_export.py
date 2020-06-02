@@ -20,6 +20,8 @@ cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='originalTitle'""")
 originalTitleID = cursor.fetchone()[0]
 cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='title'""")
 titleID = cursor.fetchone()[0]
+cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='originalImages'""")
+imagesID = cursor.fetchone()[0]
 cursor.execute("""SELECT id FROM GamePieceTypes WHERE type='allGameReleases'""")
 releasesList = cursor.fetchone()[0]
 # Create a view of GameLinks joined on GamePieces for a full owned game data DB
@@ -28,20 +30,28 @@ owned_game_database = """CREATE TEMP VIEW MasterList AS
 				JOIN GamePieces ON GameLinks.releaseKey = GamePieces.releaseKey;"""
 # Create filtered view of owned games with game times using multiple joins
 owned_game_filtered_data = """CREATE TEMP VIEW MasterDB AS SELECT DISTINCT(MasterList.releaseKey) AS releaseKey,
-				MasterList.value AS title, MC1.value AS metadata, MC2.value AS platformList, GameTimes.minutesInGame AS time
-				from MasterList, MasterList AS MC1, MasterList AS MC2, GameTimes WHERE (((MasterList.gamePieceTypeId={}) OR
-				(MasterList.gamePieceTypeId={})) AND ((MC1.gamePieceTypeId={}) OR (MC1.gamePieceTypeId={}))) AND
-				MC1.releaseKey=MasterList.releaseKey AND MC2.gamePieceTypeId={} AND MC2.releaseKey=MasterList.releaseKey
-				AND GameTimes.releaseKey=MasterList.releaseKey ORDER BY title;""".format(originalTitleID, titleID, originalMetaID, metaID, releasesList)
+				MasterList.value AS title, MC1.value AS metadata, MC2.value AS platformList, MC3.value as images,
+				GameTimes.minutesInGame AS time from MasterList, MasterList AS MC1, MasterList AS MC2,
+				MasterList AS MC3, GameTimes WHERE ((MasterList.gamePieceTypeId={0}) OR (MasterList.gamePieceTypeId={1}))
+				AND ((MC1.gamePieceTypeId={2}) OR (MC1.gamePieceTypeId={3})) AND MC2.gamePieceTypeId={4}
+				AND MC3.gamePieceTypeId={5} AND MC1.releaseKey=MasterList.releaseKey AND MC2.releaseKey=MasterList.releaseKey AND
+				MC3.releaseKey=MasterList.releaseKey AND GameTimes.releaseKey=MasterList.releaseKey ORDER BY title;""".format(
+					originalTitleID,
+					titleID,
+					originalMetaID,
+					metaID,
+					releasesList,
+					imagesID
+				)
 # Display each game and its details along with corresponding release key grouped by releasesList
-unique_game_data = """SELECT GROUP_CONCAT(DISTINCT MasterDB.releaseKey), MasterDB.title, MasterDB.metadata, sum(MasterDB.time)
+unique_game_data = """SELECT GROUP_CONCAT(DISTINCT MasterDB.releaseKey), MasterDB.title, MasterDB.metadata, sum(MasterDB.time), MasterDB.images
 				FROM MasterDB GROUP BY MasterDB.platformList ORDER BY MasterDB.title;"""
 cursor.execute(owned_game_database)
 cursor.execute(owned_game_filtered_data)
 cursor.execute(unique_game_data)
 title_regex = re.compile(r"""(?<=\{"title":").*(?="})""")
 with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
-	fieldnames = ['title', 'platformList', 'developers', 'publishers', 'releaseDate', 'genres', 'themes', 'criticsScore', 'gameMins']
+	fieldnames = ['title', 'platformList', 'developers', 'publishers', 'releaseDate', 'genres', 'themes', 'criticsScore', 'gameMins', 'backgroundImage', 'squareIcon', 'verticalCover']
 	writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 	writer.writeheader()
 	while True:
@@ -66,6 +76,10 @@ with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
 				row['criticsScore'] = round(metadata['criticsScore'])
 			else:
 				row['criticsScore'] = metadata['criticsScore']
+			images = json.loads(result[4])
+			row['backgroundImage'] = images['background'] or ''
+			row['squareIcon'] = images['squareIcon'] or ''
+			row['verticalCover'] = images['verticalCover'] or ''
 			for key, value in row.items():
 				if type(value) == list or type(value) == set:
 					row[key] = ",".join(value)
