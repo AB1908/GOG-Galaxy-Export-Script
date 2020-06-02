@@ -51,7 +51,7 @@ cursor.execute(owned_game_filtered_data)
 cursor.execute(unique_game_data)
 title_regex = re.compile(r"""(?<=\{"title":").*(?="})""")
 with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
-	fieldnames = ['title', 'platformList', 'developers', 'publishers', 'releaseDate', 'genres', 'themes', 'criticsScore', 'gameMins', 'images']
+	fieldnames = ['title', 'platformList', 'developers', 'publishers', 'releaseDate', 'genres', 'themes', 'criticsScore', 'gameMins', 'backgroundImage', 'squareIcon', 'verticalCover']
 	writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 	writer.writeheader()
 	while True:
@@ -76,10 +76,10 @@ with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
 				row['criticsScore'] = round(metadata['criticsScore'])
 			else:
 				row['criticsScore'] = metadata['criticsScore']
-			row['images'] = []
-			for t,img in json.loads(result[4]).items():
-				if img:
-					row['images'].append('{}:{}'.format(t, img))
+			images = json.loads(result[4])
+			row['backgroundImage'] = images['background'] or ''
+			row['squareIcon'] = images['squareIcon'] or ''
+			row['verticalCover'] = images['verticalCover'] or ''
 			for key, value in row.items():
 				if type(value) == list or type(value) == set:
 					row[key] = ",".join(value)
