@@ -101,12 +101,16 @@ def extractData(args):
 		prepare.nextPos = 2
 		positions = {'releaseKey': 0, 'title': 1}
 		fieldnames = ['title']
-		og_fields = ["""CREATE TEMP VIEW MasterDB AS SELECT DISTINCT(MasterList.releaseKey) AS releaseKey, MasterList.value AS title"""]
-		og_references = [""" FROM MasterList"""]
-		og_conditions = [""" WHERE ((MasterList.gamePieceTypeId={}) OR (MasterList.gamePieceTypeId={}))""".format(id('originalTitle'), id('title'))]
+		og_fields = ["""CREATE TEMP VIEW MasterDB AS SELECT DISTINCT(MasterList.releaseKey) AS releaseKey, MasterList.value AS title, PLATFORMS.value AS platformList"""]
+		og_references = [""" FROM MasterList, MasterList AS PLATFORMS"""]
+		og_conditions = [""" WHERE ((MasterList.gamePieceTypeId={}) OR (MasterList.gamePieceTypeId={})) AND ((PLATFORMS.releaseKey=MasterList.releaseKey) AND (PLATFORMS.gamePieceTypeId={}))""".format(
+					id('originalTitle'),
+					id('title'),
+					id('allGameReleases')
+				)]
 		og_order = """ ORDER BY title;"""
 		og_resultFields = ['GROUP_CONCAT(DISTINCT MasterDB.releaseKey)', 'MasterDB.title']
-		og_resultGroupBy = ['MasterDB.title']
+		og_resultGroupBy = ['MasterDB.platformList']
 
 		# Create parameterised filtered view of owned games using multiple joins
 		if args.all or args.summary:
