@@ -250,7 +250,7 @@ def extractData(args):
 					if args.platforms:
 						rkeys = result[positions['releaseKey']].split(',')
 						if any(platform in releaseKey for platform in platforms for releaseKey in rkeys):
-							row['platformList'] = set(platforms[platform] for releaseKey in rkeys for platform in platforms if releaseKey.startswith(platform))
+							row['platformList'] = list(set(platforms[platform] for releaseKey in rkeys for platform in platforms if releaseKey.startswith(platform)))
 						else:
 							row['platformList'] = []
 
@@ -270,11 +270,6 @@ def extractData(args):
 						includeField(images, 'backgroundImage', 'background', paramName='imageBackground')
 						includeField(images, 'squareIcon', paramName='imageSquare')
 						includeField(images, 'verticalCover', paramName='imageVertical')
-
-					# CSV listification
-					for key, value in row.items():
-						if type(value) == list or type(value) == set:
-							row[key] = ",".join(value)
 
 					writer.writerow(row)
 				except Exception as e:
