@@ -39,13 +39,17 @@ def extractData(args):
 		""" Returns the numeric ID for the specified type """
 		return cursor.execute('SELECT id FROM GamePieceTypes WHERE type="{}"'.format(name)).fetchone()[0]
 
+	def clean(s):
+		""" Cleans strings for CSV consumption """
+		s = re.sub(r'\s*?(?:\r?\n|<br\s*/?>)', '\\\\n', s)  # Convert CRLF, LF, <br> into '\n' string
+		return s
+
 	def jls(name, bReturnCleanedString=False):
 		""" json.loads(`name`), optionally returning the purified sub-object of the same name,
 		    for cases such as {`name`: {`name`: "string"}}
 		"""
 		v = json.loads(result[positions[name]])
-		return re.sub(r'<br\s*/?>', '\\\\n', v[name].replace('\n', '\\n')) if bReturnCleanedString else v
-
+		return clean(v[name]) if bReturnCleanedString else v
 
 	def prepare(resultName, fields, dbField=None, dbRef=None, dbCondition=None, dbResultField=None, dbGroupBy=None):
 		""" Wrapper around the statement preparation and result parsing\n
