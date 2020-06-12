@@ -1,8 +1,9 @@
-import sqlite3
-import json
-import time
 import csv
+from enum import Enum
+import json
 import re
+import sqlite3
+import time
 
 class Arguments():
 	""" argparse wrapper, to reduce code verbosity """
@@ -27,9 +28,27 @@ class Arguments():
 				return True
 		return False
 
+	def __getitem__(self, name):
+		return self.__getattr__(name)
+
 	def __getattr__(self, name):
 		ret = getattr(self.__args, name)
 		return (self.__bAll or ret) if isinstance(ret, bool) else ret
+
+class Type(Enum):
+	""" used to specify the field type while parsing the raw data """
+	STRING = 0
+	STRING_JSON = 1
+	INTEGER = 10
+	DATE = 20
+
+class Positions(dict):
+	""" small dictionary to avoid errors while parsing non-exported field positions """
+	def __getitem__(self, key):
+		try:
+			return dict.__getitem__(self, key)
+		except KeyError:
+			return None
 
 def extractData(args):
 	database_location = "C:\\ProgramData\\GOG.com\\Galaxy\\storage\\galaxy-2.0.db"
@@ -76,6 +95,22 @@ def extractData(args):
 			og_resultFields.append(dbResultField)
 		if dbGroupBy:
 			og_resultGroupBy.append(dbGroupBy)
+	
+	def includeField(object, columnName, fieldName=None, fieldType=Type.STRING, paramName=None):
+		if args[columnName if not paramName else paramName]:
+			if None is fieldName:
+				fieldName = columnName
+			try:
+				if Type.INTEGER is fieldType:
+					row[columnName] = round(object[fieldName])
+				elif Type.DATE is fieldType:
+					row[columnName] = time.strftime("%Y-%m-%d", time.localtime(object[fieldName]))
+				elif Type.STRING is fieldType:
+					row[columnName] = object[fieldName]
+				elif Type.STRING_JSON is fieldType:
+					row[columnName] = jls(fieldName, True)
+			except:
+				row[columnName] = object[fieldName]
 
 	from contextlib import contextmanager
 	@contextmanager
@@ -106,7 +141,7 @@ def extractData(args):
 
 		# Set up default queries and processing metadata, and always extract the game title along with any parameters
 		prepare.nextPos = 2
-		positions = {'releaseKey': 0, 'title': 1}
+		positions = Positions({'releaseKey': 0, 'title': 1})
 		fieldnames = ['title']
 		og_fields = ["""CREATE TEMP VIEW MasterDB AS SELECT DISTINCT(MasterList.releaseKey) AS releaseKey, MasterList.value AS title, PLATFORMS.value AS platformList"""]
 		og_references = [""" FROM MasterList, MasterList AS PLATFORMS"""]
@@ -195,20 +230,21 @@ def extractData(args):
 			while True:
 				result = cursor.fetchone()
 				if not result: break  # Break on end
-				if not result[positions['playtime']]: continue  # Skip unfinished imports
 
 				try:
 					# JSON string needs to be converted to dict
 					# For json.load() to work correctly, all double quotes must be correctly escaped
-					row = {'title': jls('title', True)}
+					try:
+						row = {'title': jls('title', True)}
+					except:
+						# No title or {'title': null}
+						continue
 
 					# Playtime
-					if args.playtime:
-						row['gameMins'] = result[positions['playtime']]
+					includeField(result, 'gameMins', positions['playtime'], paramName='playtime')
 
 					# Summaries
-					if args.summary:
-						row['summary'] = jls('summary', True)
+					includeField(result, 'summary', fieldType=Type.STRING_JSON)
 
 					# Platforms
 					if args.platforms:
@@ -216,45 +252,24 @@ def extractData(args):
 						if any(platform in releaseKey for platform in platforms for releaseKey in rkeys):
 							row['platformList'] = set(platforms[platform] for releaseKey in rkeys for platform in platforms if releaseKey.startswith(platform))
 						else:
-							row['platformList'] = ["Placeholder"]
+							row['platformList'] = []
 
 					# Various metadata
 					if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
 						metadata = jls('metadata')
-
-						if args.criticsScore:
-							try:
-								row['criticsScore'] = round(metadata['criticsScore'])
-							except:
-								row['criticsScore'] = metadata['criticsScore']
-
-						if args.developers:
-							row['developers'] = metadata['developers']
-
-						if args.genres:
-							row['genres'] = metadata['genres']
-
-						if args.publishers:
-							row['publishers'] = metadata['publishers']
-
-						if args.releaseDate:
-							try:
-								row['releaseDate'] = time.strftime("%Y-%m-%d", time.localtime(metadata['releaseDate']))
-							except:
-								row['releaseDate'] = metadata['releaseDate']
-
-						if args.themes:
-							row['themes'] = metadata['themes']
+						includeField(metadata, 'criticsScore', fieldType=Type.INTEGER)
+						includeField(metadata, 'developers')
+						includeField(metadata, 'genres')
+						includeField(metadata, 'publishers')
+						includeField(metadata, 'criticsScore', fieldType=Type.DATE)
+						includeField(metadata, 'themes')
 
 					# Original images
 					if args.imageBackground or args.imageSquare or args.imageVertical:
 						images = jls('images')
-						if args.imageBackground:
-							row['backgroundImage'] = images['background'] or ''
-						if args.imageSquare:
-							row['squareIcon'] = images['squareIcon'] or ''
-						if args.imageVertical:
-							row['verticalCover'] = images['verticalCover'] or ''
+						includeField(images, 'backgroundImage', 'background', paramName='imageBackground')
+						includeField(images, 'squareIcon', paramName='imageSquare')
+						includeField(images, 'verticalCover', paramName='imageVertical')
 
 					# CSV listification
 					for key, value in row.items():
@@ -262,8 +277,9 @@ def extractData(args):
 							row[key] = ",".join(value)
 
 					writer.writerow(row)
-				except:
+				except Exception as e:
 					print('Parsing failed on: {}'.format(result))
+					raise e
 
 if __name__ == "__main__":
 	def ba(variableName, description, defaultValue=False):
