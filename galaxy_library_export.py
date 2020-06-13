@@ -1,6 +1,10 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import csv
 from enum import Enum
 import json
+from os.path import exists
 import re
 import sqlite3
 import time
@@ -33,7 +37,11 @@ class Arguments():
 
 	def __getattr__(self, name):
 		ret = getattr(self.__args, name)
-		return (self.__bAll or ret) if isinstance(ret, bool) else ret
+		if isinstance(ret, bool):
+			ret = self.__bAll or ret
+		elif isinstance(ret, list) and (1 == len(ret)):
+			ret = ret[0]
+		return ret
 
 class Type(Enum):
 	""" used to specify the field type while parsing the raw data """
@@ -51,7 +59,7 @@ class Positions(dict):
 			return None
 
 def extractData(args):
-	database_location = "C:\\ProgramData\\GOG.com\\Galaxy\\storage\\galaxy-2.0.db"
+	database_location = args.fileDB
 	platforms = {"3do": "3DO Interactive Multiplayer", "3ds": "Nintendo 3DS", "aion": "Aion", "aionl": "Aion: Legions of War", "amazon": "Amazon", "amiga": "Amiga", "arc": "ARC", "atari": "Atari 2600", "battlenet": "Battle.net", "bb": "BestBuy", "beamdog": "Beamdog", "bethesda": "Bethesda.net", "blade": "Blade & Soul", "c64": "Commodore 64", "d2d": "Direct2Drive", "dc": "Dreamcast", "discord": "Discord", "dotemu": "DotEmu", "egg": "Newegg", "elites": "Elite Dangerous", "epic": "Epic Games Store", "eso": "The Elder Scrolls Online", "fanatical": "Fanatical", "ffxi": "Final Fantasy XI", "ffxiv": "Final Fantasy XIV", "fxstore": "Placeholder", "gamehouse": "GameHouse", "gamesessions": "GameSessions", "gameuk": "GAME UK", "generic": "Other", "gg": "GamersGate", "glyph": "Trion World", "gmg": "Green Man Gaming", "gog": "GOG", "gw": "Guild Wars", "gw2": "Guild Wars 2", "humble": "Humble Bundle", "indiegala": "IndieGala", "itch": "Itch.io", "jaguar": "Atari Jaguar", "kartridge": "Kartridge", "lin2": "Lineage 2", "minecraft": "Minecraft", "n64": "Nintendo 64", "ncube": "Nintendo GameCube", "nds": "Nintendo DS", "neo": "NeoGeo", "nes": "Nintendo Entertainment System", "ngameboy": "Game Boy", "nswitch": "Nintendo Switch", "nuuvem": "Nuuvem", "nwii": "Wii", "nwiiu": "Wii U", "oculus": "Oculus", "origin": "Origin", "paradox": "Paradox Plaza", "pathofexile": "Path of Exile", "pce": "PC Engine", "playasia": "Play-Asia", "playfire": "Playfire", "ps2": "PlayStation 2", "psn": "PlayStation Network", "psp": "PlayStation Portable", "psvita": "PlayStation Vita", "psx": "PlayStation", "riot": "Riot", "rockstar": "Rockstar Games Launcher", "saturn": "Sega Saturn", "sega32": "32X", "segacd": "Sega CD", "segag": "Sega Genesis", "sms": "Sega Master System", "snes": "Super Nintendo Entertainment System", "stadia": "Google Stadia", "star": "Star Citizen", "steam": "Steam", "test": "Test", "totalwar": "Total War", "twitch": "Twitch", "unknown": "Unknown", "uplay": "Uplay", "vision": "ColecoVision", "wargaming": "Wargaming", "weplay": "WePlay", "winstore": "Windows Store", "xboxog": "Xbox", "xboxone": "Xbox Live", "zx": "ZX Spectrum PC"}
 
 	def id(name):
@@ -256,82 +264,88 @@ def extractData(args):
 		titleExclusion = re.compile(r'dlc_?[0-9]+_?a')
 
 		# Compile the CSV
-		with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
-			writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=args.delimiter)
-			writer.writeheader()
-			for (ids, result) in results:
-				# Only consider games for the list, not DLCs
-				if 0 < len([x for x in ids if x in dlcs]):
-					continue
-
-				try:
-					# JSON string needs to be converted to dict
-					# For json.load() to work correctly, all double quotes must be correctly escaped
-					try:
-						row = {'title': jld('title', True)}
-						if (not row['title']) or (titleExclusion.match(row['title'])):
-							continue
-					except:
-						# No title or {'title': null}
+		try:
+			with open(args.fileCSV, 'w', encoding='utf-8', newline='') as csvfile:
+				writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=args.delimiter)
+				writer.writeheader()
+				for (ids, result) in results:
+					# Only consider games for the list, not DLCs
+					if 0 < len([x for x in ids if x in dlcs]):
 						continue
 
-					# Playtime
-					includeField(result, 'gameMins', positions['playtime'], paramName='playtime')
+					try:
+						# JSON string needs to be converted to dict
+						# For json.load() to work correctly, all double quotes must be correctly escaped
+						try:
+							row = {'title': jld('title', True)}
+							if (not row['title']) or (titleExclusion.match(row['title'])):
+								continue
+						except:
+							# No title or {'title': null}
+							continue
 
-					# Summaries
-					includeField(result, 'summary', fieldType=Type.STRING_JSON)
+						# Playtime
+						includeField(result, 'gameMins', positions['playtime'], paramName='playtime')
 
-					# Platforms
-					if args.platforms:
-						rkeys = result[positions['releaseKey']].split(',')
-						if any(platform in releaseKey for platform in platforms for releaseKey in rkeys):
-							row['platformList'] = set(platforms[platform] for releaseKey in rkeys for platform in platforms if releaseKey.startswith(platform))
-						else:
-							row['platformList'] = []
+						# Summaries
+						includeField(result, 'summary', fieldType=Type.STRING_JSON)
 
-					# Various metadata
-					if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
-						metadata = jld('metadata')
-						includeField(metadata, 'criticsScore', fieldType=Type.INTEGER)
-						includeField(metadata, 'developers')
-						includeField(metadata, 'genres')
-						includeField(metadata, 'publishers')
-						includeField(metadata, 'criticsScore', fieldType=Type.DATE)
-						includeField(metadata, 'themes')
+						# Platforms
+						if args.platforms:
+							rkeys = result[positions['releaseKey']].split(',')
+							if any(platform in releaseKey for platform in platforms for releaseKey in rkeys):
+								row['platformList'] = set(platforms[platform] for releaseKey in rkeys for platform in platforms if releaseKey.startswith(platform))
+							else:
+								row['platformList'] = []
 
-					# Original images
-					if args.imageBackground or args.imageSquare or args.imageVertical:
-						images = jld('images')
-						includeField(images, 'backgroundImage', 'background', paramName='imageBackground')
-						includeField(images, 'squareIcon', paramName='imageSquare')
-						includeField(images, 'verticalCover', paramName='imageVertical')
-					
-					# DLCs
-					if args.dlcs:
-						row['dlcs'] = set()
-						for dlc in jld('dlcs', True):
-							try:
-								# Check the availability of the DLC in the games list (uncertain)
-								d = next(x[1] for x in results if dlc in x[0])
-								if d:
-									row['dlcs'].add(jld('title', True, d))
-							except StopIteration:
-								pass
+						# Various metadata
+						if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
+							metadata = jld('metadata')
+							includeField(metadata, 'criticsScore', fieldType=Type.INTEGER)
+							includeField(metadata, 'developers')
+							includeField(metadata, 'genres')
+							includeField(metadata, 'publishers')
+							includeField(metadata, 'criticsScore', fieldType=Type.DATE)
+							includeField(metadata, 'themes')
 
-					# Set conversion, list sorting, empty value reset
-					for k,v in row.items():
-						if v:
-							if list == type(v) or set == type(v):
-								row[k] = sorted(list(row[k]))
-						else:
-							row[k] = ''
+						# Original images
+						if args.imageBackground or args.imageSquare or args.imageVertical:
+							images = jld('images')
+							includeField(images, 'backgroundImage', 'background', paramName='imageBackground')
+							includeField(images, 'squareIcon', paramName='imageSquare')
+							includeField(images, 'verticalCover', paramName='imageVertical')
+						
+						# DLCs
+						if args.dlcs:
+							row['dlcs'] = set()
+							for dlc in jld('dlcs', True):
+								try:
+									# Check the availability of the DLC in the games list (uncertain)
+									d = next(x[1] for x in results if dlc in x[0])
+									if d:
+										row['dlcs'].add(jld('title', True, d))
+								except StopIteration:
+									pass
 
-					writer.writerow(row)
-				except Exception as e:
-					print('Parsing failed on: {}'.format(result))
-					raise e
+						# Set conversion, list sorting, empty value reset
+						for k,v in row.items():
+							if v:
+								if list == type(v) or set == type(v):
+									row[k] = sorted(list(row[k]))
+							else:
+								row[k] = ''
+
+						writer.writerow(row)
+					except Exception as e:
+						print('Parsing failed on: {}'.format(result))
+						raise e
+		except FileNotFoundError:
+			print('Unable to write to “{}”, make sure that the path exists and that you have the write permissions'.format(args.fileCSV))
+			return
 
 if __name__ == "__main__":
+	defaultDBlocation = 'C:\\ProgramData\\GOG.com\\Galaxy\\storage\\galaxy-2.0.db'
+
 	def ba(variableName, description, defaultValue=False):
 		""" Boolean argument: creates a default boolean argument with the name of the storage variable and
 			the description to be shown in the help screen
@@ -345,6 +359,30 @@ if __name__ == "__main__":
 
 	args = Arguments(
 		[
+			[
+				['-i', '--input'],
+				{
+					'default': defaultDBlocation,
+					'type': str,
+					'nargs': 1,
+					'required': False,
+					'metavar': 'FN',
+					'help': 'pathname of the galaxy2 database',
+					'dest': 'fileDB',
+				}
+			],
+			[
+				['-o', '--output'],
+				{
+					'default': 'gameDB.csv',
+					'type': str,
+					'nargs': 1,
+					'required': False,
+					'metavar': 'FN',
+					'help': 'pathname of the generated CSV',
+					'dest': 'fileCSV',
+				}
+			],
 			[
 				['-d'],
 				{
@@ -374,7 +412,13 @@ if __name__ == "__main__":
 		description='GOG Galaxy 2 exporter: scans the local Galaxy 2 database to export a list of games and related information into a CSV'
 	)
 
-	if args.anyOption(['delimiter']):
-		extractData(args)
+	if args.anyOption(['delimiter', 'fileCSV', 'fileDB']):
+		if exists(args.fileDB):
+			extractData(args)
+		else:
+			print('Unable to find the DB “{}”, make sure that {}'.format(
+				args.fileDB,
+				'GOG Galaxy 2 is installed' if defaultDBlocation == args.fileDB else 'you specified the correct path'
+			))
 	else:
 		args.help()
