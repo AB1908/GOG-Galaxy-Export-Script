@@ -314,7 +314,7 @@ def extractData(args):
 							includeField(metadata, 'developers')
 							includeField(metadata, 'genres')
 							includeField(metadata, 'publishers')
-							includeField(metadata, 'criticsScore', fieldType=Type.DATE)
+							includeField(metadata, 'releaseDate', fieldType=Type.DATE)
 							includeField(metadata, 'themes')
 
 						# Original images
