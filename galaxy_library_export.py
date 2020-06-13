@@ -60,15 +60,22 @@ def extractData(args):
 
 	def clean(s):
 		""" Cleans strings for CSV consumption """
-		s = re.sub(r'\s*?(?:\r?\n|<br\s*/?>)', '\\\\n', s)  # Convert CRLF, LF, <br> into '\n' string
+		for f in clean.filters:
+			s = f.sub('\\\\n', s)  # Convert CRLF, LF, <br> into '\n' string
 		return s
+	clean.filters = [
+		re.compile(r'\s*?(?:\r?\n|<br\s*/?>)')
+	]
 
-	def jls(name, bReturnCleanedString=False):
+	def jld(name, bReturnParsed=False, object=None):
 		""" json.loads(`name`), optionally returning the purified sub-object of the same name,
 		    for cases such as {`name`: {`name`: "string"}}
 		"""
-		v = json.loads(result[positions[name]])
-		return clean(v[name]) if bReturnCleanedString else v
+		v = json.loads((object if object else result)[positions[name]])
+		if not bReturnParsed:
+			return v
+		v = v[name]
+		return clean(v) if isinstance(v, str) else v
 
 	def prepare(resultName, fields, dbField=None, dbRef=None, dbCondition=None, dbResultField=None, dbGroupBy=None):
 		""" Wrapper around the statement preparation and result parsing\n
@@ -108,7 +115,7 @@ def extractData(args):
 				elif Type.STRING is fieldType:
 					row[columnName] = object[fieldName]
 				elif Type.STRING_JSON is fieldType:
-					row[columnName] = jls(fieldName, True)
+					row[columnName] = jld(fieldName, True)
 			except:
 				row[columnName] = object[fieldName]
 
@@ -154,7 +161,8 @@ def extractData(args):
 		og_resultFields = ['GROUP_CONCAT(DISTINCT MasterDB.releaseKey)', 'MasterDB.title']
 		og_resultGroupBy = ['MasterDB.platformList']
 
-		# Create parameterised filtered view of owned games using multiple joins
+		# Create parameterised filtered view of owned games using multiple joins: the order
+		# in which we `prepare` them, is the same as they will appear as CSV columns
 		if args.summary:
 			prepare(
 				'summary',
@@ -198,6 +206,15 @@ def extractData(args):
 				'sum(MasterDB.time)'
 			)
 
+		prepare(  # Grab a list of DLCs for filtering, regardless of whether we're exporting them or not
+			'dlcs',
+			{'dlcs': args.dlcs},
+			'DLC.value AS dlcs',
+			'MasterList AS DLC',
+			'(DLC.releaseKey=MasterList.releaseKey) AND (DLC.gamePieceTypeId={})'.format(id('dlcs')),
+			'MasterDB.dlcs'
+		)
+
 		if args.imageBackground or args.imageSquare or args.imageVertical:
 			prepare(
 				'images',
@@ -223,19 +240,37 @@ def extractData(args):
 		cursor.execute(''.join(og_fields + og_references + og_conditions) + og_order)
 		cursor.execute(unique_game_data)
 
-		#title_regex = re.compile(r"""(?<=\{"title":").*(?="})""")
+		# Prepare a list of games and DLCs
+		results = []
+		dlcs = set()
+		while True:
+			result = cursor.fetchone()
+			if not result: break
+			results.append((result[0].split(','), result))
+			d = jld('dlcs', True)
+			if d:
+				for dlc in d:
+					dlcs.add(dlc)
+
+		# There are spurious random dlcNUMBERa entries in the library, compile a RegEx to filter them out
+		titleExclusion = re.compile(r'dlc_?[0-9]+_?a')
+
+		# Compile the CSV
 		with open("gameDB.csv", "w", encoding='utf-8', newline='') as csvfile:
 			writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=args.delimiter)
 			writer.writeheader()
-			while True:
-				result = cursor.fetchone()
-				if not result: break  # Break on end
+			for (ids, result) in results:
+				# Only consider games for the list, not DLCs
+				if 0 < len([x for x in ids if x in dlcs]):
+					continue
 
 				try:
 					# JSON string needs to be converted to dict
 					# For json.load() to work correctly, all double quotes must be correctly escaped
 					try:
-						row = {'title': jls('title', True)}
+						row = {'title': jld('title', True)}
+						if (not row['title']) or (titleExclusion.match(row['title'])):
+							continue
 					except:
 						# No title or {'title': null}
 						continue
@@ -250,13 +285,13 @@ def extractData(args):
 					if args.platforms:
 						rkeys = result[positions['releaseKey']].split(',')
 						if any(platform in releaseKey for platform in platforms for releaseKey in rkeys):
-							row['platformList'] = list(set(platforms[platform] for releaseKey in rkeys for platform in platforms if releaseKey.startswith(platform)))
+							row['platformList'] = set(platforms[platform] for releaseKey in rkeys for platform in platforms if releaseKey.startswith(platform))
 						else:
 							row['platformList'] = []
 
 					# Various metadata
 					if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
-						metadata = jls('metadata')
+						metadata = jld('metadata')
 						includeField(metadata, 'criticsScore', fieldType=Type.INTEGER)
 						includeField(metadata, 'developers')
 						includeField(metadata, 'genres')
@@ -266,10 +301,30 @@ def extractData(args):
 
 					# Original images
 					if args.imageBackground or args.imageSquare or args.imageVertical:
-						images = jls('images')
+						images = jld('images')
 						includeField(images, 'backgroundImage', 'background', paramName='imageBackground')
 						includeField(images, 'squareIcon', paramName='imageSquare')
 						includeField(images, 'verticalCover', paramName='imageVertical')
+					
+					# DLCs
+					if args.dlcs:
+						row['dlcs'] = set()
+						for dlc in jld('dlcs', True):
+							try:
+								# Check the availability of the DLC in the games list (uncertain)
+								d = next(x[1] for x in results if dlc in x[0])
+								if d:
+									row['dlcs'].add(jld('title', True, d))
+							except StopIteration:
+								pass
+
+					# Set conversion, list sorting, empty value reset
+					for k,v in row.items():
+						if v:
+							if list == type(v) or set == type(v):
+								row[k] = sorted(list(row[k]))
+						else:
+							row[k] = ''
 
 					writer.writerow(row)
 				except Exception as e:
@@ -304,6 +359,7 @@ if __name__ == "__main__":
 			[['-a', '--all'], ba('all', 'extracts all the fields')],
 			[['--critics-score'], ba('criticsScore', 'critics rating score')],
 			[['--developers'], ba('developers', 'list of developers')],
+			[['--dlcs'], ba('dlcs', 'list of dlc titles for the specified game')],
 			[['--genres'], ba('genres', 'game genres')],
 			[['--image-background'], ba('imageBackground', 'background image')],
 			[['--image-square'], ba('imageSquare', 'square icon')],
