@@ -262,8 +262,15 @@ def extractData(args):
 					dlcs.add(dlc)
 		results = natsorted(results, key=lambda r: str.casefold(r[1][positions['title']]))
 
-		# There are spurious random dlcNUMBERa entries in the library, compile a RegEx to filter them out
-		titleExclusion = re.compile(r'dlc_?[0-9]+_?a')
+		# There are spurious random dlcNUMBERa entries in the library, plus a few DLCs which appear
+		# multiple times in different ways and are not attached to a game
+		titleExclusion = re.compile(r'^(?:'
+				r'dlc_?[0-9]+_?a'
+				r'|alternative look for yennefer(?:\s+\[[a-z]+\])?'
+				r'|beard and hairstyle set for geralt(?:\s+\[[a-z]+\])?'
+				r'|new quest - contract: missing miners(?:\s+\[[a-z]+\])?'
+				r'|temerian armor set(?:\s+\[[a-z]+\])?'
+		r')$')
 
 		# Compile the CSV
 		try:
@@ -280,7 +287,7 @@ def extractData(args):
 						# For json.load() to work correctly, all double quotes must be correctly escaped
 						try:
 							row = {'title': jld('title', True)}
-							if (not row['title']) or (titleExclusion.match(row['title'])):
+							if (not row['title']) or (titleExclusion.match(str.casefold(row['title']))):
 								continue
 						except:
 							# No title or {'title': null}
