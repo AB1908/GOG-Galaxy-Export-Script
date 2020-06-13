@@ -4,6 +4,7 @@
 import csv
 from enum import Enum
 import json
+from natsort import natsorted
 from os.path import exists
 import re
 import sqlite3
@@ -259,6 +260,7 @@ def extractData(args):
 			if d:
 				for dlc in d:
 					dlcs.add(dlc)
+		results = natsorted(results, key=lambda r: str.casefold(r[1][positions['title']]))
 
 		# There are spurious random dlcNUMBERa entries in the library, compile a RegEx to filter them out
 		titleExclusion = re.compile(r'dlc_?[0-9]+_?a')
@@ -331,7 +333,7 @@ def extractData(args):
 						for k,v in row.items():
 							if v:
 								if list == type(v) or set == type(v):
-									row[k] = sorted(list(row[k]))
+									row[k] = natsorted(list(row[k]), key=str.casefold)
 							else:
 								row[k] = ''
 
