@@ -4,14 +4,19 @@ This script helps a user export their GOG Galaxy 2.0 Library.
 
 ## Usage
 
-Simply run the script and it'll create a CSV in the current working directory of a list of all the games you've added to the launcher. The output is in the following format:
+Through the use of command line parameters, you can decide what data you want exported to the CSV. Some of the options include the list of platforms (`--platforms`), playtime in minutes (`--playtime`), developers, publishers, genres and much more. You can read the help manual by invoking the script without parameters, to find an up to date list of all the possible export options.
 
-| Title | List of Platforms | Developers | Publishers | Release Date | Genres | Themes | Critics Score | Time Played | Images |
-| ----- | ----------------- | ---------- | ---------- | ------------ | ------ | ------ | ------------- | ----------- | ------ |
+If you want to use the CSV in a different tool, such as the [HTML5 library exporter](https://github.com/Varstahl/GOG-Galaxy-HTML5-exporter), you can default to the `-a` parameter to export everything.
+
+When a different locale wants a different CSV delimiter (such as the Italian), you can manually specify the character to use (`-D <character>`).
+
+Also, you can manually specify the database location (`-i`) and the CSV location (`-o`), instead of using the default ones.
 
 ## Dependencies
 
 - Python 3
+  - csv
+  - natsort
 
 ## Platform Support
 
