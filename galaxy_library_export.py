@@ -415,7 +415,7 @@ if __name__ == "__main__":
 			[
 				['-d'],
 				{
-					'default': ',',
+					'default': '\t',
 					'type': str,
 					'required': False,
 					'metavar': 'CHARACTER',
