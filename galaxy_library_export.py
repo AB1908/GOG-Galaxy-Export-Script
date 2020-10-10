@@ -28,6 +28,7 @@ class Arguments():
 		self.__parser.print_help()
 
 	def anyOption(self, exceptions):
+		self.notExportOptions = exceptions
 		for k,v in self.__args.__dict__.items():
 			if (k not in exceptions) and v:
 				return True
@@ -38,7 +39,7 @@ class Arguments():
 
 	def __getattr__(self, name):
 		ret = getattr(self.__args, name)
-		if isinstance(ret, bool):
+		if isinstance(ret, bool) and (name not in self.notExportOptions):
 			ret = self.__bAll or ret
 		elif isinstance(ret, list) and (1 == len(ret)):
 			ret = ret[0]
@@ -361,6 +362,8 @@ def extractData(args):
 							if v:
 								if list == type(v) or set == type(v):
 									row[k] = natsorted(list(row[k]), key=str.casefold)
+									if not args.pythonLists:
+										row[k] = args.delimiter.join(row[k])
 							else:
 								row[k] = ''
 
@@ -438,11 +441,12 @@ if __name__ == "__main__":
 			[['--tags'], ba('tags', 'user tags')],
 			[['--themes'], ba('themes', 'game themes')],
 			[['--playtime'], ba('playtime', 'time spent playing the game')],
+			[['--py-lists'], ba('pythonLists', 'export lists as Python parseable instead of delimiter separated strings')],
 		],
 		description='GOG Galaxy 2 exporter: scans the local Galaxy 2 database to export a list of games and related information into a CSV'
 	)
 
-	if args.anyOption(['delimiter', 'fileCSV', 'fileDB']):
+	if args.anyOption(['delimiter', 'fileCSV', 'fileDB', 'pythonLists']):
 		if exists(args.fileDB):
 			extractData(args)
 		else:
