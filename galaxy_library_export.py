@@ -28,6 +28,7 @@ class Arguments():
 		self.__parser.print_help()
 
 	def anyOption(self, exceptions):
+		self.notExportOptions = exceptions
 		for k,v in self.__args.__dict__.items():
 			if (k not in exceptions) and v:
 				return True
@@ -38,7 +39,7 @@ class Arguments():
 
 	def __getattr__(self, name):
 		ret = getattr(self.__args, name)
-		if isinstance(ret, bool):
+		if isinstance(ret, bool) and (name not in self.notExportOptions):
 			ret = self.__bAll or ret
 		elif isinstance(ret, list) and (1 == len(ret)):
 			ret = ret[0]
@@ -50,6 +51,7 @@ class Type(Enum):
 	STRING_JSON = 1
 	INTEGER = 10
 	DATE = 20
+	LIST = 30
 
 class Positions(dict):
 	""" small dictionary to avoid errors while parsing non-exported field positions """
@@ -86,7 +88,7 @@ def extractData(args):
 		v = v[name]
 		return clean(v) if isinstance(v, str) else v
 
-	def prepare(resultName, fields, dbField=None, dbRef=None, dbCondition=None, dbResultField=None, dbGroupBy=None):
+	def prepare(resultName, fields, dbField=None, dbRef=None, dbCondition=None, dbCustomJoin=None, dbResultField=None, dbGroupBy=None):
 		""" Wrapper around the statement preparation and result parsing\n
 			`resultName` cli argument variable name\n
 			`fields` {`title` to be inserted in the CSV: `boolean condition`, …}\n
@@ -107,12 +109,14 @@ def extractData(args):
 			og_references.append(', {}'.format(dbRef))
 		if dbCondition:
 			og_conditions.append(' AND ({})'.format(dbCondition))
+		if dbCustomJoin:
+			og_joins.append(' ' + dbCustomJoin)
 		if dbResultField:
 			og_resultFields.append(dbResultField)
 		if dbGroupBy:
 			og_resultGroupBy.append(dbGroupBy)
 	
-	def includeField(object, columnName, fieldName=None, fieldType=Type.STRING, paramName=None):
+	def includeField(object, columnName, fieldName=None, fieldType=Type.STRING, paramName=None, delimiter=','):
 		if args[columnName if not paramName else paramName]:
 			if None is fieldName:
 				fieldName = columnName
@@ -125,6 +129,9 @@ def extractData(args):
 					row[columnName] = object[fieldName]
 				elif Type.STRING_JSON is fieldType:
 					row[columnName] = jld(fieldName, True)
+				elif Type.LIST is fieldType:
+					s = object[fieldName].split(delimiter)
+					row[columnName] = set(s) if 1 < len(s) else objectFieldName
 			except:
 				row[columnName] = object[fieldName]
 
@@ -161,6 +168,7 @@ def extractData(args):
 		fieldnames = ['title']
 		og_fields = ["""CREATE TEMP VIEW MasterDB AS SELECT DISTINCT(MasterList.releaseKey) AS releaseKey, MasterList.value AS title, PLATFORMS.value AS platformList"""]
 		og_references = [""" FROM MasterList, MasterList AS PLATFORMS"""]
+		og_joins = []
 		og_conditions = [""" WHERE ((MasterList.gamePieceTypeId={}) OR (MasterList.gamePieceTypeId={})) AND ((PLATFORMS.releaseKey=MasterList.releaseKey) AND (PLATFORMS.gamePieceTypeId={}))""".format(
 					id('originalTitle'),
 					id('title'),
@@ -176,10 +184,10 @@ def extractData(args):
 			prepare(
 				'summary',
 				{'summary': True},
-				'SUMMARY.value AS summary',
-				'MasterList AS SUMMARY',
-				'(SUMMARY.releaseKey=MasterList.releaseKey) AND (SUMMARY.gamePieceTypeId={})'.format(id('summary')),
-				'MasterDB.summary'
+				dbField='SUMMARY.value AS summary',
+				dbRef='MasterList AS SUMMARY',
+				dbCondition='(SUMMARY.releaseKey=MasterList.releaseKey) AND (SUMMARY.gamePieceTypeId={})'.format(id('summary')),
+				dbResultField='MasterDB.summary'
 			)
 
 		if args.platforms:
@@ -199,29 +207,38 @@ def extractData(args):
 					'releaseDate': args.releaseDate,
 					'themes': args.themes,
 				},
-				'METADATA.value AS metadata',
-				'MasterList AS METADATA',
-				'(METADATA.releaseKey=MasterList.releaseKey) AND ((METADATA.gamePieceTypeId={}) OR (METADATA.gamePieceTypeId={}))'.format(id('originalMeta'), id('meta')),
-				'MasterDB.metadata'
+				dbField='METADATA.value AS metadata',
+				dbRef='MasterList AS METADATA',
+				dbCondition='(METADATA.releaseKey=MasterList.releaseKey) AND ((METADATA.gamePieceTypeId={}) OR (METADATA.gamePieceTypeId={}))'.format(id('originalMeta'), id('meta')),
+				dbResultField='MasterDB.metadata'
 			)
 
 		if args.playtime:
 			prepare(
 				'playtime',
 				{'gameMins': True},
-				'GAMETIMES.minutesInGame AS time',
-				'GAMETIMES',
-				'GAMETIMES.releaseKey=MasterList.releaseKey',
-				'sum(MasterDB.time)'
+				dbField='GAMETIMES.minutesInGame AS time',
+				dbRef='GAMETIMES',
+				dbCondition='GAMETIMES.releaseKey=MasterList.releaseKey',
+				dbResultField='sum(MasterDB.time)'
+			)
+
+		if args.tags:
+			prepare(
+				'tags',
+				{'tags': True},
+				dbField='USERRELEASETAGS.tag AS tags',
+				dbCustomJoin='LEFT JOIN USERRELEASETAGS ON USERRELEASETAGS.releaseKey=MasterList.releaseKey',
+				dbResultField='GROUP_CONCAT(MasterDB.tags)'
 			)
 
 		prepare(  # Grab a list of DLCs for filtering, regardless of whether we're exporting them or not
 			'dlcs',
 			{'dlcs': args.dlcs},
-			'DLC.value AS dlcs',
-			'MasterList AS DLC',
-			'(DLC.releaseKey=MasterList.releaseKey) AND (DLC.gamePieceTypeId={})'.format(id('dlcs')),
-			'MasterDB.dlcs'
+			dbField='DLC.value AS dlcs',
+			dbRef='MasterList AS DLC',
+			dbCondition='(DLC.releaseKey=MasterList.releaseKey) AND (DLC.gamePieceTypeId={})'.format(id('dlcs')),
+			dbResultField='MasterDB.dlcs'
 		)
 
 		if args.imageBackground or args.imageSquare or args.imageVertical:
@@ -232,10 +249,10 @@ def extractData(args):
 					'squareIcon': args.imageSquare,
 					'verticalCover': args.imageVertical
 				},
-				'IMAGES.value AS images',
-				'MasterList AS IMAGES',
-				'(IMAGES.releaseKey=MasterList.releaseKey) AND (IMAGES.gamePieceTypeId={})'.format(id('originalImages')),
-				'MasterDB.images'
+				dbField='IMAGES.value AS images',
+				dbRef='MasterList AS IMAGES',
+				dbCondition='(IMAGES.releaseKey=MasterList.releaseKey) AND (IMAGES.gamePieceTypeId={})'.format(id('originalImages')),
+				dbResultField='MasterDB.images'
 			)
 
 		# Display each game and its details along with corresponding release key grouped by releasesList
@@ -246,7 +263,7 @@ def extractData(args):
 
 		# Perform the queries
 		cursor.execute(owned_game_database)
-		cursor.execute(''.join(og_fields + og_references + og_conditions) + og_order)
+		cursor.execute(''.join(og_fields + og_references + og_joins + og_conditions) + og_order)
 		cursor.execute(unique_game_data)
 
 		# Prepare a list of games and DLCs
@@ -336,11 +353,17 @@ def extractData(args):
 								except StopIteration:
 									pass
 
+						# Tags
+						if args.tags:
+							includeField(result, 'tags', positions['tags'], fieldType=Type.LIST)
+
 						# Set conversion, list sorting, empty value reset
 						for k,v in row.items():
 							if v:
 								if list == type(v) or set == type(v):
 									row[k] = natsorted(list(row[k]), key=str.casefold)
+									if not args.pythonLists:
+										row[k] = args.delimiter.join(row[k])
 							else:
 								row[k] = ''
 
@@ -395,7 +418,7 @@ if __name__ == "__main__":
 			[
 				['-d'],
 				{
-					'default': ',',
+					'default': '\t',
 					'type': str,
 					'required': False,
 					'metavar': 'CHARACTER',
@@ -415,13 +438,15 @@ if __name__ == "__main__":
 			[['--publishers'], ba('publishers', 'list of publishers')],
 			[['--release-date'], ba('releaseDate', 'release date of the software')],
 			[['--summary'], ba('summary', 'game summary')],
+			[['--tags'], ba('tags', 'user tags')],
 			[['--themes'], ba('themes', 'game themes')],
 			[['--playtime'], ba('playtime', 'time spent playing the game')],
+			[['--py-lists'], ba('pythonLists', 'export lists as Python parseable instead of delimiter separated strings')],
 		],
 		description='GOG Galaxy 2 exporter: scans the local Galaxy 2 database to export a list of games and related information into a CSV'
 	)
 
-	if args.anyOption(['delimiter', 'fileCSV', 'fileDB']):
+	if args.anyOption(['delimiter', 'fileCSV', 'fileDB', 'pythonLists']):
 		if exists(args.fileDB):
 			extractData(args)
 		else:

@@ -12,6 +12,8 @@ When a different locale wants a different CSV delimiter (such as the Italian), y
 
 Also, you can manually specify the database location (`-i`) and the CSV location (`-o`), instead of using the default ones.
 
+If the CSV has to be read by a Python script, you can use the option `--py-lists` to export python compatible list strings that can be reconverted in python objects through `ast`'s `literal_eval`, which avoids several (potentially incorrect) string split/joins.
+
 ## Dependencies
 
 - Python 3
