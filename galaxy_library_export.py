@@ -178,6 +178,16 @@ def extractData(args):
 		og_resultFields = ['GROUP_CONCAT(DISTINCT MasterDB.releaseKey)', 'MasterDB.title']
 		og_resultGroupBy = ['MasterDB.platformList']
 
+		# (User customised) sorting title, same export data sorting as in the Galaxy client
+		prepare(
+			'sortingTitle',
+			{'sortingTitle': False},
+			dbField='SORTINGTITLE.value AS sortingTitle',
+			dbRef='MasterList AS SORTINGTITLE',
+			dbCondition='(SORTINGTITLE.releaseKey=MasterList.releaseKey) AND (SORTINGTITLE.gamePieceTypeId={})'.format(id('sortingTitle')),
+			dbResultField='MasterDB.sortingTitle'
+		)
+
 		# Create parameterised filtered view of owned games using multiple joins: the order
 		# in which we `prepare` them, is the same as they will appear as CSV columns
 		if args.summary:
@@ -277,7 +287,7 @@ def extractData(args):
 			if d:
 				for dlc in d:
 					dlcs.add(dlc)
-		results = natsorted(results, key=lambda r: str.casefold(r[1][positions['title']]))
+		results = natsorted(results, key=lambda r: str.casefold(r[1][positions['sortingTitle']]))
 
 		# There are spurious random dlcNUMBERa entries in the library, plus a few DLCs which appear
 		# multiple times in different ways and are not attached to a game
