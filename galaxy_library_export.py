@@ -34,6 +34,9 @@ class Arguments():
 				return True
 		return False
 
+	def extractAll(self):
+		self.__bAll = True
+
 	def __getitem__(self, name):
 		return self.__getattr__(name)
 
@@ -426,7 +429,7 @@ if __name__ == "__main__":
 					'dest': 'delimiter',
 				}
 			],
-			[['-a', '--all'], ba('all', 'extracts all the fields')],
+			[['-a', '--all'], ba('all', '(default) extracts all the fields')],
 			[['--critics-score'], ba('criticsScore', 'critics rating score')],
 			[['--developers'], ba('developers', 'list of developers')],
 			[['--dlcs'], ba('dlcs', 'list of dlc titles for the specified game')],
@@ -446,13 +449,13 @@ if __name__ == "__main__":
 		description='GOG Galaxy 2 exporter: scans the local Galaxy 2 database to export a list of games and related information into a CSV'
 	)
 
-	if args.anyOption(['delimiter', 'fileCSV', 'fileDB', 'pythonLists']):
-		if exists(args.fileDB):
-			extractData(args)
-		else:
-			print('Unable to find the DB “{}”, make sure that {}'.format(
-				args.fileDB,
-				'GOG Galaxy 2 is installed' if defaultDBlocation == args.fileDB else 'you specified the correct path'
-			))
+	if not args.anyOption(['delimiter', 'fileCSV', 'fileDB', 'pythonLists']):
+		args.extractAll()
+	if exists(args.fileDB):
+		extractData(args)
 	else:
-		args.help()
+		print('Unable to find the DB “{}”, make sure that {}'.format(
+			args.fileDB,
+			'GOG Galaxy 2 is installed' if defaultDBlocation == args.fileDB else 'you specified the correct path'
+		))
+
