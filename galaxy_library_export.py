@@ -10,6 +10,9 @@ import re
 import sqlite3
 import time
 
+from howlongtobeatpy import HowLongToBeat
+
+
 class Arguments():
 	""" argparse wrapper, to reduce code verbosity """
 	__parser = None
@@ -48,6 +51,7 @@ class Arguments():
 			ret = ret[0]
 		return ret
 
+
 class Type(Enum):
 	""" used to specify the field type while parsing the raw data """
 	STRING = 0
@@ -56,6 +60,7 @@ class Type(Enum):
 	DATE = 20
 	LIST = 30
 
+
 class Positions(dict):
 	""" small dictionary to avoid errors while parsing non-exported field positions """
 	def __getitem__(self, key):
@@ -63,6 +68,7 @@ class Positions(dict):
 			return dict.__getitem__(self, key)
 		except KeyError:
 			return None
+
 
 def extractData(args):
 	database_location = args.fileDB
@@ -155,6 +161,11 @@ def extractData(args):
 					row[columnName] = set(s) if 1 < len(s) else objectFieldName
 			except:
 				row[columnName] = object[fieldName]
+
+	def get_how_long_to_beat(hlb_time, time_unit):
+		if time_unit is None:
+			return 'Unavailable'
+		return str(hlb_time).replace(chr(189), '.5') + ' ' + time_unit
 
 	from contextlib import contextmanager
 	@contextmanager
@@ -329,6 +340,12 @@ def extractData(args):
 
 		# Compile the CSV
 		try:
+
+			if args.howLongToBeat:
+				fieldnames.append('howLongToBeatMain')
+				fieldnames.append('howLongToBeatMainExtras')
+				fieldnames.append('howLongToBeatCompletionist')
+
 			with open(args.fileCSV, 'w', encoding='utf-8', newline='') as csvfile:
 				writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=args.delimiter)
 				writer.writeheader()
@@ -378,7 +395,7 @@ def extractData(args):
 							includeField(images, 'backgroundImage', 'background', paramName='imageBackground')
 							includeField(images, 'squareIcon', paramName='imageSquare')
 							includeField(images, 'verticalCover', paramName='imageVertical')
-						
+
 						# DLCs
 						if args.dlcs:
 							row['dlcs'] = set()
@@ -394,6 +411,18 @@ def extractData(args):
 						# Tags
 						if args.tags:
 							includeField(result, 'tags', positions['tags'], fieldType=Type.LIST)
+
+						# How Long To Beat
+						if args.howLongToBeat:
+							hlb_results = HowLongToBeat().search(row['title'])
+
+							if hlb_results is not None and len(hlb_results) > 0:
+								best_element = max(hlb_results, key=lambda element: element.similarity)
+								row['howLongToBeatMain'] = get_how_long_to_beat(best_element.gameplay_main, best_element.gameplay_main_unit)
+								row['howLongToBeatMainExtras'] = \
+									get_how_long_to_beat(best_element.gameplay_main_extra, best_element.gameplay_main_extra_unit)
+								row['howLongToBeatCompletionist'] = \
+									get_how_long_to_beat(best_element.gameplay_completionist, best_element.gameplay_completionist_unit)
 
 						# Set conversion, list sorting, empty value reset
 						for k,v in row.items():
@@ -480,6 +509,7 @@ if __name__ == "__main__":
 			[['--tags'], ba('tags', 'user tags')],
 			[['--themes'], ba('themes', 'game themes')],
 			[['--playtime'], ba('playtime', 'time spent playing the game')],
+			[['--extract-how-long-to-beat'], ba('howLongToBeat', 'expected play time from howlongtobeat.com')],
 			[['--py-lists'], ba('pythonLists', 'export lists as Python parseable instead of delimiter separated strings')],
 		],
 		description='GOG Galaxy 2 exporter: scans the local Galaxy 2 database to export a list of games and related information into a CSV'
