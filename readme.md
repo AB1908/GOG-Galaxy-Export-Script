@@ -19,6 +19,7 @@ If the CSV has to be read by a Python script, you can use the option `--py-lists
 - Python 3
   - csv
   - natsort
+  - howlongtobeatpy
 
 ## Platform Support
 
