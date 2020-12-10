@@ -10,7 +10,17 @@ import re
 import sqlite3
 import time
 
-from howlongtobeatpy import HowLongToBeat
+
+import asyncio
+import aiohttp
+from howlongtobeatpy.HTMLRequests import HTMLRequests
+from howlongtobeatpy.HTMLResultParser import HTMLResultParser
+import sys
+import tqdm
+
+
+UNAVAILABLE = 'UNAVAILABLE'
+MINUTES = 'Min'
 
 
 class Arguments():
@@ -70,7 +80,7 @@ class Positions(dict):
 			return None
 
 
-def extractData(args):
+async def extractData(args):
 	database_location = args.fileDB
 	platforms = {"3do": "3DO Interactive Multiplayer", "3ds": "Nintendo 3DS", "aion": "Aion", "aionl": "Aion: Legions of War", "amazon": "Amazon", "amiga": "Amiga", "arc": "ARC", "atari": "Atari 2600", "battlenet": "Battle.net", "bb": "BestBuy", "beamdog": "Beamdog", "bethesda": "Bethesda.net", "blade": "Blade & Soul", "c64": "Commodore 64", "d2d": "Direct2Drive", "dc": "Dreamcast", "discord": "Discord", "dotemu": "DotEmu", "egg": "Newegg", "elites": "Elite Dangerous", "epic": "Epic Games Store", "eso": "The Elder Scrolls Online", "fanatical": "Fanatical", "ffxi": "Final Fantasy XI", "ffxiv": "Final Fantasy XIV", "fxstore": "Placeholder", "gamehouse": "GameHouse", "gamesessions": "GameSessions", "gameuk": "GAME UK", "generic": "Other", "gg": "GamersGate", "glyph": "Trion World", "gmg": "Green Man Gaming", "gog": "GOG", "gw": "Guild Wars", "gw2": "Guild Wars 2", "humble": "Humble Bundle", "indiegala": "IndieGala", "itch": "Itch.io", "jaguar": "Atari Jaguar", "kartridge": "Kartridge", "lin2": "Lineage 2", "minecraft": "Minecraft", "n64": "Nintendo 64", "ncube": "Nintendo GameCube", "nds": "Nintendo DS", "neo": "NeoGeo", "nes": "Nintendo Entertainment System", "ngameboy": "Game Boy", "nswitch": "Nintendo Switch", "nuuvem": "Nuuvem", "nwii": "Wii", "nwiiu": "Wii U", "oculus": "Oculus", "origin": "Origin", "paradox": "Paradox Plaza", "pathofexile": "Path of Exile", "pce": "PC Engine", "playasia": "Play-Asia", "playfire": "Playfire", "ps2": "PlayStation 2", "psn": "PlayStation Network", "psp": "PlayStation Portable", "psvita": "PlayStation Vita", "psx": "PlayStation", "riot": "Riot", "rockstar": "Rockstar Games Launcher", "saturn": "Sega Saturn", "sega32": "32X", "segacd": "Sega CD", "segag": "Sega Genesis", "sms": "Sega Master System", "snes": "Super Nintendo Entertainment System", "stadia": "Google Stadia", "star": "Star Citizen", "steam": "Steam", "test": "Test", "totalwar": "Total War", "twitch": "Twitch", "unknown": "Unknown", "uplay": "Uplay", "vision": "ColecoVision", "wargaming": "Wargaming", "weplay": "WePlay", "winstore": "Windows Store", "xboxog": "Xbox", "xboxone": "Xbox Live", "zx": "ZX Spectrum PC"}
 
@@ -84,7 +94,7 @@ def extractData(args):
 				o = json.load(f)
 		except:
 			o = {}
-		
+
 		# Initialise defaults
 		for k, v in defaults.items():
 			if k not in o:
@@ -107,7 +117,7 @@ def extractData(args):
 
 	def jld(name, bReturnParsed=False, object=None):
 		""" json.loads(`name`), optionally returning the purified sub-object of the same name,
-		    for cases such as {`name`: {`name`: "string"}}
+			for cases such as {`name`: {`name`: "string"}}
 		"""
 		v = json.loads((object if object else result)[positions[name]])
 		if not bReturnParsed:
@@ -142,7 +152,7 @@ def extractData(args):
 			og_resultFields.append(dbResultField)
 		if dbGroupBy:
 			og_resultGroupBy.append(dbGroupBy)
-	
+
 	def includeField(object, columnName, fieldName=None, fieldType=Type.STRING, paramName=None, delimiter=','):
 		if args[columnName if not paramName else paramName]:
 			if None is fieldName:
@@ -162,10 +172,64 @@ def extractData(args):
 			except:
 				row[columnName] = object[fieldName]
 
-	def get_how_long_to_beat(hlb_time, time_unit):
-		if time_unit is None:
-			return 'Unavailable'
-		return str(hlb_time).replace(chr(189), '.5') + ' ' + time_unit
+	async def get_how_long_to_beat_object(original_title, client_session):
+		hlbObject = {original_title: {
+			'howLongToBeatMain': UNAVAILABLE,
+			'howLongToBeatMainExtras': UNAVAILABLE,
+			'howLongToBeatCompletionist': UNAVAILABLE
+		}}
+
+		modified_title = original_title.translate({ord(i): None for i in '™!®'})
+
+		headers = {
+			'content-type': 'application/x-www-form-urlencoded',
+			'accept': '*/*'
+		}
+
+		payload = {
+			'queryString': modified_title,
+			't': 'games',
+			'sorthead': 'popular',
+			'sortd': 'Normal Order',
+			'plat': '',
+			'length_type': 'main',
+			'length_min': '',
+			'length_max': '',
+			'detail': ''
+		}
+
+		async with client_session.post(HTMLRequests.SEARCH_URL, data=payload, headers=headers) as resp:
+			if resp is not None and str(resp.status) == "200":
+				html_result = await resp.text()
+				parser = HTMLResultParser(modified_title, HTMLRequests.GAME_URL, 0.4, None)
+				parser.feed(html_result)
+				hlb_results = parser.results
+			else:
+				hlb_results = None
+
+		if hlb_results is not None and len(hlb_results) > 0:
+			best_element = max(hlb_results, key=lambda element: element.similarity)
+
+			hlbObject[original_title]['howLongToBeatMain'] = get_how_long_to_beat(
+				best_element.gameplay_main, best_element.gameplay_main_unit)
+			hlbObject[original_title]['howLongToBeatMainExtras'] = get_how_long_to_beat(
+				best_element.gameplay_main_extra, best_element.gameplay_main_extra_unit)
+			hlbObject[original_title]['howLongToBeatCompletionist'] = get_how_long_to_beat(
+				best_element.gameplay_completionist, best_element.gameplay_completionist_unit)
+
+		return hlbObject
+
+	def get_how_long_to_beat(hlb_time, hlb_time_unit):
+		if hlb_time_unit is None:
+			return UNAVAILABLE
+
+		hlb_time = str(hlb_time).replace(chr(189), '.5')
+
+		if MINUTES in hlb_time_unit:
+			# convert to hours for simplicity
+			hlb_time = int(hlb_time) / 60
+
+		return str(hlb_time)
 
 	from contextlib import contextmanager
 	@contextmanager
@@ -191,152 +255,181 @@ def extractData(args):
 	# Load options before opening the DB
 	options = loadOptions()
 
-	with OpenDB() as cursor:
-		# Create a view of GameLinks joined on GamePieces for a full owned game data DB
-		owned_game_database = """CREATE TEMP VIEW MasterList AS
-				SELECT GamePieces.releaseKey, GamePieces.gamePieceTypeId, GamePieces.value FROM GameLinks
-				JOIN GamePieces ON GameLinks.releaseKey = GamePieces.releaseKey;"""
+	async with aiohttp.ClientSession() as session:
+		with OpenDB() as cursor:
+			# Create a view of GameLinks joined on GamePieces for a full owned game data DB
+			owned_game_database = """CREATE TEMP VIEW MasterList AS
+					SELECT GamePieces.releaseKey, GamePieces.gamePieceTypeId, GamePieces.value FROM GameLinks
+					JOIN GamePieces ON GameLinks.releaseKey = GamePieces.releaseKey;"""
 
-		# Set up default queries and processing metadata, and always extract the game title along with any parameters
-		prepare.nextPos = 2
-		positions = Positions({'releaseKey': 0, 'title': 1})
-		fieldnames = ['title']
-		og_fields = ["""CREATE TEMP VIEW MasterDB AS SELECT DISTINCT(MasterList.releaseKey) AS releaseKey, MasterList.value AS title, PLATFORMS.value AS platformList"""]
-		og_references = [""" FROM MasterList, MasterList AS PLATFORMS"""]
-		og_joins = []
-		og_conditions = [""" WHERE ((MasterList.gamePieceTypeId={}) OR (MasterList.gamePieceTypeId={})) AND ((PLATFORMS.releaseKey=MasterList.releaseKey) AND (PLATFORMS.gamePieceTypeId={}))""".format(
-					id('originalTitle'),
-					id('title'),
-					id('allGameReleases')
-				)]
-		og_order = """ ORDER BY title;"""
-		og_resultFields = ['GROUP_CONCAT(DISTINCT MasterDB.releaseKey)', 'MasterDB.title']
-		og_resultGroupBy = ['MasterDB.platformList']
+			# Set up default queries and processing metadata, and always extract the game title along with any parameters
+			prepare.nextPos = 2
+			positions = Positions({'releaseKey': 0, 'title': 1})
+			fieldnames = ['title']
+			og_fields = ["""CREATE TEMP VIEW MasterDB AS SELECT DISTINCT(MasterList.releaseKey) AS releaseKey, MasterList.value AS title, PLATFORMS.value AS platformList"""]
+			og_references = [""" FROM MasterList, MasterList AS PLATFORMS"""]
+			og_joins = []
+			og_conditions = [""" WHERE ((MasterList.gamePieceTypeId={}) OR (MasterList.gamePieceTypeId={})) AND ((PLATFORMS.releaseKey=MasterList.releaseKey) AND (PLATFORMS.gamePieceTypeId={}))""".format(
+						id('originalTitle'),
+						id('title'),
+						id('allGameReleases')
+					)]
+			og_order = """ ORDER BY title;"""
+			og_resultFields = ['GROUP_CONCAT(DISTINCT MasterDB.releaseKey)', 'MasterDB.title']
+			og_resultGroupBy = ['MasterDB.platformList']
 
-		# (User customised) sorting title, same export data sorting as in the Galaxy client
-		prepare(
-			'sortingTitle',
-			{'sortingTitle': False},
-			dbField='SORTINGTITLE.value AS sortingTitle',
-			dbRef='MasterList AS SORTINGTITLE',
-			dbCondition='(SORTINGTITLE.releaseKey=MasterList.releaseKey) AND (SORTINGTITLE.gamePieceTypeId={})'.format(id('sortingTitle')),
-			dbResultField='MasterDB.sortingTitle'
-		)
-
-		# Create parameterised filtered view of owned games using multiple joins: the order
-		# in which we `prepare` them, is the same as they will appear as CSV columns
-		if args.summary:
+			# (User customised) sorting title, same export data sorting as in the Galaxy client
 			prepare(
-				'summary',
-				{'summary': True},
-				dbField='SUMMARY.value AS summary',
-				dbRef='MasterList AS SUMMARY',
-				dbCondition='(SUMMARY.releaseKey=MasterList.releaseKey) AND (SUMMARY.gamePieceTypeId={})'.format(id('summary')),
-				dbResultField='MasterDB.summary'
+				'sortingTitle',
+				{'sortingTitle': False},
+				dbField='SORTINGTITLE.value AS sortingTitle',
+				dbRef='MasterList AS SORTINGTITLE',
+				dbCondition='(SORTINGTITLE.releaseKey=MasterList.releaseKey) AND (SORTINGTITLE.gamePieceTypeId={})'.format(id('sortingTitle')),
+				dbResultField='MasterDB.sortingTitle'
 			)
 
-		if args.platforms:
-			prepare(
-				'platforms',
-				{'platformList': True},
+			# Create parameterised filtered view of owned games using multiple joins: the order
+			# in which we `prepare` them, is the same as they will appear as CSV columns
+			if args.summary:
+				prepare(
+					'summary',
+					{'summary': True},
+					dbField='SUMMARY.value AS summary',
+					dbRef='MasterList AS SUMMARY',
+					dbCondition='(SUMMARY.releaseKey=MasterList.releaseKey) AND (SUMMARY.gamePieceTypeId={})'.format(id('summary')),
+					dbResultField='MasterDB.summary'
+				)
+
+			if args.platforms:
+				prepare(
+					'platforms',
+					{'platformList': True},
+				)
+
+			if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
+				prepare(
+					'metadata',
+					{
+						'criticsScore': args.criticsScore,
+						'developers': args.developers,
+						'genres': args.genres,
+						'publishers': args.publishers,
+						'releaseDate': args.releaseDate,
+						'themes': args.themes,
+					},
+					dbField='METADATA.value AS metadata',
+					dbRef='MasterList AS METADATA',
+					dbCondition='(METADATA.releaseKey=MasterList.releaseKey) AND ((METADATA.gamePieceTypeId={}) OR (METADATA.gamePieceTypeId={}))'.format(id('originalMeta'), id('meta')),
+					dbResultField='MasterDB.metadata'
+				)
+
+			if args.playtime:
+				prepare(
+					'playtime',
+					{'gameMins': True},
+					dbField='GAMETIMES.minutesInGame AS time',
+					dbRef='GAMETIMES',
+					dbCondition='GAMETIMES.releaseKey=MasterList.releaseKey',
+					dbResultField='sum(MasterDB.time)'
+				)
+
+			if args.tags:
+				prepare(
+					'tags',
+					{'tags': True},
+					dbField='USERRELEASETAGS.tag AS tags',
+					dbCustomJoin='LEFT JOIN USERRELEASETAGS ON USERRELEASETAGS.releaseKey=MasterList.releaseKey',
+					dbResultField='GROUP_CONCAT(MasterDB.tags)'
+				)
+
+			prepare(  # Grab a list of DLCs for filtering, regardless of whether we're exporting them or not
+				'dlcs',
+				{'dlcs': args.dlcs},
+				dbField='DLC.value AS dlcs',
+				dbRef='MasterList AS DLC',
+				dbCondition='(DLC.releaseKey=MasterList.releaseKey) AND (DLC.gamePieceTypeId={})'.format(id('dlcs')),
+				dbResultField='MasterDB.dlcs'
 			)
 
-		if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
-			prepare(
-				'metadata',
-				{
-					'criticsScore': args.criticsScore,
-					'developers': args.developers,
-					'genres': args.genres,
-					'publishers': args.publishers,
-					'releaseDate': args.releaseDate,
-					'themes': args.themes,
-				},
-				dbField='METADATA.value AS metadata',
-				dbRef='MasterList AS METADATA',
-				dbCondition='(METADATA.releaseKey=MasterList.releaseKey) AND ((METADATA.gamePieceTypeId={}) OR (METADATA.gamePieceTypeId={}))'.format(id('originalMeta'), id('meta')),
-				dbResultField='MasterDB.metadata'
+			if args.imageBackground or args.imageSquare or args.imageVertical:
+				prepare(
+					'images',
+					{
+						'backgroundImage': args.imageBackground,
+						'squareIcon': args.imageSquare,
+						'verticalCover': args.imageVertical
+					},
+					dbField='IMAGES.value AS images',
+					dbRef='MasterList AS IMAGES',
+					dbCondition='(IMAGES.releaseKey=MasterList.releaseKey) AND (IMAGES.gamePieceTypeId={})'.format(id('originalImages')),
+					dbResultField='MasterDB.images'
+				)
+
+			# Display each game and its details along with corresponding release key grouped by releasesList
+			unique_game_data = """SELECT {} FROM MasterDB GROUP BY {} ORDER BY MasterDB.title;""".format(
+				', '.join(og_resultFields),
+				', '.join(og_resultGroupBy)
 			)
 
-		if args.playtime:
-			prepare(
-				'playtime',
-				{'gameMins': True},
-				dbField='GAMETIMES.minutesInGame AS time',
-				dbRef='GAMETIMES',
-				dbCondition='GAMETIMES.releaseKey=MasterList.releaseKey',
-				dbResultField='sum(MasterDB.time)'
-			)
+			# Perform the queries
+			cursor.execute(owned_game_database)
+			cursor.execute(''.join(og_fields + og_references + og_joins + og_conditions) + og_order)
+			cursor.execute(unique_game_data)
 
-		if args.tags:
-			prepare(
-				'tags',
-				{'tags': True},
-				dbField='USERRELEASETAGS.tag AS tags',
-				dbCustomJoin='LEFT JOIN USERRELEASETAGS ON USERRELEASETAGS.releaseKey=MasterList.releaseKey',
-				dbResultField='GROUP_CONCAT(MasterDB.tags)'
-			)
+			# Prepare a list of games and DLCs
+			results = []
+			dlcs = set()
 
-		prepare(  # Grab a list of DLCs for filtering, regardless of whether we're exporting them or not
-			'dlcs',
-			{'dlcs': args.dlcs},
-			dbField='DLC.value AS dlcs',
-			dbRef='MasterList AS DLC',
-			dbCondition='(DLC.releaseKey=MasterList.releaseKey) AND (DLC.gamePieceTypeId={})'.format(id('dlcs')),
-			dbResultField='MasterDB.dlcs'
-		)
+			# There are spurious random dlcNUMBERa entries in the library, plus a few DLCs which appear
+			# multiple times in different ways and are not attached to a game
+			titleExclusion = re.compile(r'^(?:'
+										r'dlc_?[0-9]+_?a'
+										r'|alternative look for yennefer(?:\s+\[[a-z]+\])?'
+										r'|beard and hairstyle set for geralt(?:\s+\[[a-z]+\])?'
+										r'|new quest - contract: missing miners(?:\s+\[[a-z]+\])?'
+										r'|temerian armor set(?:\s+\[[a-z]+\])?'
+										r')$')
 
-		if args.imageBackground or args.imageSquare or args.imageVertical:
-			prepare(
-				'images',
-				{
-					'backgroundImage': args.imageBackground,
-					'squareIcon': args.imageSquare,
-					'verticalCover': args.imageVertical
-				},
-				dbField='IMAGES.value AS images',
-				dbRef='MasterList AS IMAGES',
-				dbCondition='(IMAGES.releaseKey=MasterList.releaseKey) AND (IMAGES.gamePieceTypeId={})'.format(id('originalImages')),
-				dbResultField='MasterDB.images'
-			)
+			hlb_tasks = []
+			hlb_titles = []
 
-		# Display each game and its details along with corresponding release key grouped by releasesList
-		unique_game_data = """SELECT {} FROM MasterDB GROUP BY {} ORDER BY MasterDB.title;""".format(
-			', '.join(og_resultFields),
-			', '.join(og_resultGroupBy)
-		)
+			while True:
+				result = cursor.fetchone()
+				if not result:
+					break
 
-		# Perform the queries
-		cursor.execute(owned_game_database)
-		cursor.execute(''.join(og_fields + og_references + og_joins + og_conditions) + og_order)
-		cursor.execute(unique_game_data)
+				# JSON string needs to be converted to dict
+				# For json.load() to work correctly, all double quotes must be correctly escaped
+				try:
+					result_title = jld('title', True)
+					if (not result_title) or (titleExclusion.match(str.casefold(result_title))):
+						continue
 
-		# Prepare a list of games and DLCs
-		results = []
-		dlcs = set()
-		while True:
-			result = cursor.fetchone()
-			if not result: break
-			results.append((result[0].split(','), result))
-			d = jld('dlcs', True)
-			if d:
-				for dlc in d:
-					dlcs.add(dlc)
-		results = natsorted(results, key=lambda r: str.casefold(r[1][positions['sortingTitle']]))
+					if args.howLongToBeat and result_title not in hlb_titles:
+						hlb_titles.append(result_title)
+						hlb_tasks.append(asyncio.ensure_future(get_how_long_to_beat_object(result_title, session)))
+				except Exception as e:
+					print(e)
+					# No title or {'title': null}
+					continue
 
-		# Exclude games mistakenly treated as DLCs, such as "3 out of 10, EP2"
-		for dlc in options['TreatDLCAsGame']:
-			dlcs.discard(dlc)
+				results.append((result[0].split(','), result))
+				d = jld('dlcs', True)
+				if d:
+					for dlc in d:
+						dlcs.add(dlc)
+				results = natsorted(results, key=lambda r: str.casefold(r[1][positions['sortingTitle']]))
 
-		# There are spurious random dlcNUMBERa entries in the library, plus a few DLCs which appear
-		# multiple times in different ways and are not attached to a game
-		titleExclusion = re.compile(r'^(?:'
-				r'dlc_?[0-9]+_?a'
-				r'|alternative look for yennefer(?:\s+\[[a-z]+\])?'
-				r'|beard and hairstyle set for geralt(?:\s+\[[a-z]+\])?'
-				r'|new quest - contract: missing miners(?:\s+\[[a-z]+\])?'
-				r'|temerian armor set(?:\s+\[[a-z]+\])?'
-		r')$')
+		hlb_results = {}
+		# hlb_results = await asyncio.gather(*hlb_tasks)
+		# hlb_results = {list(hlb_result.keys())[0]: hlb_result[list(hlb_result.keys())[0]] for hlb_result in hlb_results}
+
+		if args.howLongToBeat:
+			for hlb_task in tqdm.tqdm(asyncio.as_completed(hlb_tasks), desc='GATHERING HOW LONG TO BEAT STATISTICS',
+									  total=len(hlb_tasks)):
+				hlb_result = await hlb_task
+				title_key = list(hlb_result.keys())[0]
+				hlb_results[title_key] = hlb_result[title_key]
 
 		# Compile the CSV
 		try:
@@ -349,7 +442,8 @@ def extractData(args):
 			with open(args.fileCSV, 'w', encoding='utf-8', newline='') as csvfile:
 				writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=args.delimiter)
 				writer.writeheader()
-				for (ids, result) in results:
+				# for (ids, result) in results:
+				for (ids, result) in tqdm.tqdm(results, desc='CREATING CSV FILE'):
 					# Only consider games for the list, not DLCs
 					if 0 < len([x for x in ids if x in dlcs]):
 						continue
@@ -414,15 +508,11 @@ def extractData(args):
 
 						# How Long To Beat
 						if args.howLongToBeat:
-							hlb_results = HowLongToBeat().search(row['title'])
+							hlb_result = hlb_results[row['title']]
 
-							if hlb_results is not None and len(hlb_results) > 0:
-								best_element = max(hlb_results, key=lambda element: element.similarity)
-								row['howLongToBeatMain'] = get_how_long_to_beat(best_element.gameplay_main, best_element.gameplay_main_unit)
-								row['howLongToBeatMainExtras'] = \
-									get_how_long_to_beat(best_element.gameplay_main_extra, best_element.gameplay_main_extra_unit)
-								row['howLongToBeatCompletionist'] = \
-									get_how_long_to_beat(best_element.gameplay_completionist, best_element.gameplay_completionist_unit)
+							row['howLongToBeatMain'] = hlb_result['howLongToBeatMain']
+							row['howLongToBeatMainExtras'] = hlb_result['howLongToBeatMainExtras']
+							row['howLongToBeatCompletionist'] = hlb_result['howLongToBeatCompletionist']
 
 						# Set conversion, list sorting, empty value reset
 						for k,v in row.items():
@@ -443,6 +533,10 @@ def extractData(args):
 			return
 
 if __name__ == "__main__":
+	# See https://github.com/encode/httpx/issues/914#issuecomment-622586610 for why this was needed
+	if sys.version_info[0] == 3 and sys.version_info[1] >= 8 and sys.platform.startswith('win'):
+		asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 	defaultDBlocation = 'C:\\ProgramData\\GOG.com\\Galaxy\\storage\\galaxy-2.0.db'
 
 	def ba(variableName, description, defaultValue=False):
@@ -518,7 +612,7 @@ if __name__ == "__main__":
 	if not args.anyOption(['delimiter', 'fileCSV', 'fileDB', 'pythonLists']):
 		args.extractAll()
 	if exists(args.fileDB):
-		extractData(args)
+		asyncio.run(extractData(args))
 	else:
 		print('Unable to find the DB “{}”, make sure that {}'.format(
 			args.fileDB,

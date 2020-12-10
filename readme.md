@@ -20,6 +20,7 @@ If the CSV has to be read by a Python script, you can use the option `--py-lists
   - csv
   - natsort
   - howlongtobeatpy
+  - tqdm
 
 ## Platform Support
 
