@@ -2,13 +2,15 @@
 # -*- coding: utf-8 -*-
 
 import csv
-from enum import Enum
 import json
-from natsort import natsorted
-from os.path import exists
 import re
 import sqlite3
 import time
+from enum import Enum
+from os.path import exists
+
+from natsort import natsorted
+
 
 class Arguments():
 	""" argparse wrapper, to reduce code verbosity """
@@ -257,6 +259,17 @@ def extractData(args):
 				dbResultField='sum(MasterDB.time)'
 			)
 
+		if args.lastPlayed:
+			prepare(
+				'lastPlayed',
+				{'lastPlayed': True},
+				dbField='LASTPLAYEDDATES.lastPlayedDate as lastPlayed',
+				dbRef='LASTPLAYEDDATES',
+				dbCondition='LASTPLAYEDDATES.gameReleaseKey=MasterList.releaseKey',
+				dbResultField='MasterDB.lastPlayed'
+			)
+
+
 		if args.tags:
 			prepare(
 				'tags',
@@ -350,6 +363,9 @@ def extractData(args):
 
 						# Playtime
 						includeField(result, 'gameMins', positions['playtime'], paramName='playtime')
+
+						# LastPlayed
+						includeField(result, 'lastPlayed', positions['lastPlayed'], paramName='lastPlayed')
 
 						# Summaries
 						includeField(result, 'summary', fieldType=Type.STRING_JSON)
@@ -461,7 +477,7 @@ if __name__ == "__main__":
 					'type': str,
 					'required': False,
 					'metavar': 'CHARACTER',
-					'help': 'CSV field separator, defaults to comma',
+					'help': 'CSV field separator, defaults to tab',
 					'dest': 'delimiter',
 				}
 			],
@@ -480,6 +496,7 @@ if __name__ == "__main__":
 			[['--tags'], ba('tags', 'user tags')],
 			[['--themes'], ba('themes', 'game themes')],
 			[['--playtime'], ba('playtime', 'time spent playing the game')],
+			[['--LastPlayed'], ba('lastPlayed', 'last time the game was played')],
 			[['--py-lists'], ba('pythonLists', 'export lists as Python parseable instead of delimiter separated strings')],
 		],
 		description='GOG Galaxy 2 exporter: scans the local Galaxy 2 database to export a list of games and related information into a CSV'
