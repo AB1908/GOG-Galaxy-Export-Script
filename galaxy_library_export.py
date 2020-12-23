@@ -264,8 +264,7 @@ def extractData(args):
 				'lastPlayed',
 				{'lastPlayed': True},
 				dbField='LASTPLAYEDDATES.lastPlayedDate as lastPlayed',
-				dbRef='LASTPLAYEDDATES',
-				dbCondition='LASTPLAYEDDATES.gameReleaseKey=MasterList.releaseKey',
+				dbCustomJoin='LEFT JOIN LASTPLAYEDDATES ON LASTPLAYEDDATES.gameReleaseKey=MasterList.releaseKey',
 				dbResultField='MasterDB.lastPlayed'
 			)
 
@@ -365,7 +364,7 @@ def extractData(args):
 						includeField(result, 'gameMins', positions['playtime'], paramName='playtime')
 
 						# LastPlayed
-						includeField(result, 'lastPlayed', positions['lastPlayed'], paramName='lastPlayed')
+						includeField(result, 'lastPlayed', positions['lastPlayed'])
 
 						# Summaries
 						includeField(result, 'summary', fieldType=Type.STRING_JSON)
@@ -496,7 +495,7 @@ if __name__ == "__main__":
 			[['--tags'], ba('tags', 'user tags')],
 			[['--themes'], ba('themes', 'game themes')],
 			[['--playtime'], ba('playtime', 'time spent playing the game')],
-			[['--LastPlayed'], ba('lastPlayed', 'last time the game was played')],
+			[['--last-played'], ba('lastPlayed', 'last time the game was played')],
 			[['--py-lists'], ba('pythonLists', 'export lists as Python parseable instead of delimiter separated strings')],
 		],
 		description='GOG Galaxy 2 exporter: scans the local Galaxy 2 database to export a list of games and related information into a CSV'
