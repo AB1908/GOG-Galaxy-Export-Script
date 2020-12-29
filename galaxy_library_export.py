@@ -275,6 +275,16 @@ def extractData(args):
 			dbResultField='MasterDB.dlcs'
 		)
 
+		if args.osCompatibility:
+			prepare(
+				'osCompatibility',
+				{'osCompatibility': True},
+				dbField='OSCOMPATIBILITY.value AS osCompatibility',
+				dbRef='MasterList AS OSCOMPATIBILITY',
+				dbCondition='OSCOMPATIBILITY.releaseKey=MasterList.releaseKey AND OSCOMPATIBILITY.gamePieceTypeId={}'.format(id('osCompatibility')),
+				dbResultField='MasterDB.osCompatibility'
+			)
+
 		if args.imageBackground or args.imageSquare or args.imageVertical:
 			prepare(
 				'images',
@@ -403,6 +413,13 @@ def extractData(args):
 						if args.tags:
 							includeField(result, 'tags', positions['tags'], fieldType=Type.LIST)
 
+						# osCompatibility
+						if args.osCompatibility:
+							row['osCompatibility'] = set()
+							osCompatibility = jld('osCompatibility')
+							for operatingsystem in osCompatibility['supported']:
+								row['osCompatibility'].add(operatingsystem['name'])
+
 						# Set conversion, list sorting, empty value reset
 						for k,v in row.items():
 							if v:
@@ -487,6 +504,7 @@ if __name__ == "__main__":
 			[['--release-date'], ba('releaseDate', 'release date of the software')],
 			[['--summary'], ba('summary', 'game summary')],
 			[['--tags'], ba('tags', 'user tags')],
+			[['--os-compatibility'], ba('osCompatibility', 'list of supported operating systems')],
 			[['--themes'], ba('themes', 'game themes')],
 			[['--playtime'], ba('playtime', 'time spent playing the game')],
 			[['--py-lists'], ba('pythonLists', 'export lists as Python parseable instead of delimiter separated strings')],
