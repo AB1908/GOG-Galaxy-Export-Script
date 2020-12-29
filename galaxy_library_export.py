@@ -275,6 +275,15 @@ def extractData(args):
 			dbResultField='MasterDB.dlcs'
 		)
 
+		if args.isHidden:
+			prepare(
+				'isHidden',
+				{'isHidden': True},
+				dbField='UserReleaseProperties.isHidden AS isHidden',
+				dbCustomJoin='LEFT JOIN USERRELEASEPROPERTIES ON USERRELEASEPROPERTIES.releaseKey=MasterList.releaseKey',
+				dbResultField='CASE WHEN MasterDB.isHidden = 1 THEN \'True\' ELSE \'False\' END'
+			)
+
 		if args.osCompatibility:
 			prepare(
 				'osCompatibility',
@@ -413,6 +422,10 @@ def extractData(args):
 						if args.tags:
 							includeField(result, 'tags', positions['tags'], fieldType=Type.LIST)
 
+						# isHidden
+						if args.isHidden:
+							includeField(result, 'isHidden', positions['isHidden'], fieldType=Type.STRING)
+
 						# osCompatibility
 						if args.osCompatibility:
 							row['osCompatibility'] = set()
@@ -504,6 +517,7 @@ if __name__ == "__main__":
 			[['--release-date'], ba('releaseDate', 'release date of the software')],
 			[['--summary'], ba('summary', 'game summary')],
 			[['--tags'], ba('tags', 'user tags')],
+			[['--hidden'], ba('isHidden', 'is gamne hidden in galaxy client')],
 			[['--os-compatibility'], ba('osCompatibility', 'list of supported operating systems')],
 			[['--themes'], ba('themes', 'game themes')],
 			[['--playtime'], ba('playtime', 'time spent playing the game')],
