@@ -205,7 +205,7 @@ def extractData(args):
 		# (User customised) sorting title, same export data sorting as in the Galaxy client
 		prepare(
 			'sortingTitle',
-			{'sortingTitle': False},
+			{'sortingTitle': args.sortingTitle},
 			dbField='SORTINGTITLE.value AS sortingTitle',
 			dbRef='MasterList AS SORTINGTITLE',
 			dbCondition='(SORTINGTITLE.releaseKey=MasterList.releaseKey) AND (SORTINGTITLE.gamePieceTypeId={})'.format(id('sortingTitle')),
@@ -348,6 +348,14 @@ def extractData(args):
 							# No title or {'title': null}
 							continue
 
+						# SortingTitle
+						if args.sortingTitle:
+							try:
+								sortingTitle = jld('sortingTitle')
+								row['sortingTitle'] = sortingTitle['title']
+							except:
+								row['sortingTitle'] = ''
+
 						# Playtime
 						includeField(result, 'gameMins', positions['playtime'], paramName='playtime')
 
@@ -466,6 +474,7 @@ if __name__ == "__main__":
 				}
 			],
 			[['-a', '--all'], ba('all', '(default) extracts all the fields')],
+			[['--sorting-title'], ba('sortingTitle', '(user customised) sorting title')],
 			[['--critics-score'], ba('criticsScore', 'critics rating score')],
 			[['--developers'], ba('developers', 'list of developers')],
 			[['--dlcs'], ba('dlcs', 'list of dlc titles for the specified game')],
