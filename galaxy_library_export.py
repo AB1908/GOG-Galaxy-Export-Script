@@ -193,14 +193,24 @@ def extractData(args):
 		og_fields = ["""CREATE TEMP VIEW MasterDB AS SELECT DISTINCT(MasterList.releaseKey) AS releaseKey, MasterList.value AS title, PLATFORMS.value AS platformList"""]
 		og_references = [""" FROM MasterList, MasterList AS PLATFORMS"""]
 		og_joins = []
-		og_conditions = [""" WHERE ((MasterList.gamePieceTypeId={}) OR (MasterList.gamePieceTypeId={})) AND ((PLATFORMS.releaseKey=MasterList.releaseKey) AND (PLATFORMS.gamePieceTypeId={}))""".format(
-					id('originalTitle'),
+		og_conditions = [""" WHERE MasterList.gamePieceTypeId={} AND PLATFORMS.releaseKey=MasterList.releaseKey AND PLATFORMS.gamePieceTypeId={}""".format(
 					id('title'),
 					id('allGameReleases')
 				)]
 		og_order = """ ORDER BY title;"""
 		og_resultFields = ['GROUP_CONCAT(DISTINCT MasterDB.releaseKey)', 'MasterDB.title']
 		og_resultGroupBy = ['MasterDB.platformList']
+
+		# title can be customized by user, allow extraction of original title
+		if args.originalTitle:
+			prepare(
+				'originalTitle',
+				{'originalTitle': True},
+				dbField='ORIGINALTITLE.value AS originalTitle',
+				dbRef='MasterList AS ORIGINALTITLE',
+				dbCondition='ORIGINALTITLE.releaseKey=MasterList.releaseKey AND ORIGINALTITLE.gamePieceTypeId={}'.format(id('originalTitle')),
+				dbResultField='MasterDB.originalTitle'
+			)
 
 		# (User customised) sorting title, same export data sorting as in the Galaxy client
 		prepare(
@@ -367,6 +377,7 @@ def extractData(args):
 							# No title or {'title': null}
 							continue
 
+
 						# SortingTitle
 						if args.sortingTitle:
 							try:
@@ -374,6 +385,15 @@ def extractData(args):
 								row['sortingTitle'] = sortingTitle['title']
 							except:
 								row['sortingTitle'] = ''
+
+						# OriginalTitle
+						if args.originalTitle:
+							try:
+								originalTitle = jld('originalTitle')
+								row['originalTitle'] = originalTitle['title']
+							except:
+								row['originalTitle'] = ''
+
 
 						# Playtime
 						includeField(result, 'gameMins', positions['playtime'], paramName='playtime')
@@ -509,6 +529,7 @@ if __name__ == "__main__":
 			],
 			[['-a', '--all'], ba('all', '(default) extracts all the fields')],
 			[['--sorting-title'], ba('sortingTitle', '(user customised) sorting title')],
+			[['--title-original'], ba('originalTitle', 'original title independent of any user changes')],
 			[['--critics-score'], ba('criticsScore', 'critics rating score')],
 			[['--developers'], ba('developers', 'list of developers')],
 			[['--dlcs'], ba('dlcs', 'list of dlc titles for the specified game')],
