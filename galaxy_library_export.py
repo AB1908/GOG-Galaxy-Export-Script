@@ -253,8 +253,22 @@ def extractData(args):
 				},
 				dbField='METADATA.value AS metadata',
 				dbRef='MasterList AS METADATA',
-				dbCondition='(METADATA.releaseKey=MasterList.releaseKey) AND ((METADATA.gamePieceTypeId={}) OR (METADATA.gamePieceTypeId={}))'.format(id('originalMeta'), id('meta')),
+				dbCondition='METADATA.releaseKey=MasterList.releaseKey AND METADATA.gamePieceTypeId={}'.format(id('meta')),
 				dbResultField='MasterDB.metadata'
+			)
+
+		if args.originalReleaseDate:
+			prepare(
+				'originalMetadata',
+				{
+					# in the current galaxy2 release only the release date is customizable
+					# if future releases add support for more customizable meta data extend this list
+					'originalReleaseDate': args.originalReleaseDate,
+				},
+				dbField='ORIGINALMETADATA.value AS originalMetadata',
+				dbRef='MasterList AS ORIGINALMETADATA',
+				dbCondition='ORIGINALMETADATA.releaseKey=MasterList.releaseKey AND ORIGINALMETADATA.gamePieceTypeId={}'.format(id('originalMeta')),
+				dbResultField='MasterDB.originalMetadata'
 			)
 
 		if args.playtime:
@@ -419,6 +433,11 @@ def extractData(args):
 							includeField(metadata, 'releaseDate', fieldType=Type.DATE)
 							includeField(metadata, 'themes')
 
+						# Original metadata
+						if args.originalReleaseDate:
+							originalMetadata = jld('originalMetadata')
+							includeField(originalMetadata, 'originalReleaseDate', 'releaseDate', fieldType=Type.DATE)
+
 						# Original images
 						if args.imageBackground or args.imageSquare or args.imageVertical:
 							images = jld('images')
@@ -539,7 +558,8 @@ if __name__ == "__main__":
 			[['--image-vertical'], ba('imageVertical', 'vertical cover image')],
 			[['--platforms'], ba('platforms', 'list of platforms the game is available on')],
 			[['--publishers'], ba('publishers', 'list of publishers')],
-			[['--release-date'], ba('releaseDate', 'release date of the software')],
+			[['--release-date'], ba('releaseDate', '(user customized) release date of the software')],
+			[['--release-date-original'], ba('originalReleaseDate', 'original release date independent of any user changes')],
 			[['--summary'], ba('summary', 'game summary')],
 			[['--tags'], ba('tags', 'user tags')],
 			[['--hidden'], ba('isHidden', 'is gamne hidden in galaxy client')],
