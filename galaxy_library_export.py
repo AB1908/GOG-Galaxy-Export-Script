@@ -240,17 +240,24 @@ def extractData(args):
 				{'platformList': True},
 			)
 
-		if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
-			prepare(
-				'metadata',
-				{
+		# add filednames of metadata and orginalMetadata
+		# this allows to order them in a way that metadata values are followed by their related originalMetadata value in the export
+		for name,condition in {
 					'criticsScore': args.criticsScore,
 					'developers': args.developers,
 					'genres': args.genres,
 					'publishers': args.publishers,
 					'releaseDate': args.releaseDate,
+					'originalReleaseDate': args.originalReleaseDate,
 					'themes': args.themes,
-				},
+				}.items():
+			if condition:
+				fieldnames.append(name)
+			
+		if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
+			prepare(
+				'metadata',
+				{}, # fieldnames are added separateley together with their related originalMetadata fields
 				dbField='METADATA.value AS metadata',
 				dbRef='MasterList AS METADATA',
 				dbCondition='METADATA.releaseKey=MasterList.releaseKey AND METADATA.gamePieceTypeId={}'.format(id('meta')),
@@ -260,11 +267,7 @@ def extractData(args):
 		if args.originalReleaseDate:
 			prepare(
 				'originalMetadata',
-				{
-					# in the current galaxy2 release only the release date is customizable
-					# if future releases add support for more customizable meta data extend this list
-					'originalReleaseDate': args.originalReleaseDate,
-				},
+				{}, # fieldnames are added separateley together with their related metadata fields
 				dbField='ORIGINALMETADATA.value AS originalMetadata',
 				dbRef='MasterList AS ORIGINALMETADATA',
 				dbCondition='ORIGINALMETADATA.releaseKey=MasterList.releaseKey AND ORIGINALMETADATA.gamePieceTypeId={}'.format(id('originalMeta')),
