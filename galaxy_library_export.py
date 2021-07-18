@@ -430,8 +430,10 @@ def extractData(args):
 						if args.osCompatibility:
 							row['osCompatibility'] = set()
 							osCompatibility = jld('osCompatibility')
-							for operatingsystem in osCompatibility['supported']:
-								row['osCompatibility'].add(operatingsystem['name'])
+							osList = osCompatibility['supported']
+							if osList:
+								for operatingSystem in osList:
+									row['osCompatibility'].add(operatingSystem['name'])
 
 						# Set conversion, list sorting, empty value reset
 						for k,v in row.items():
