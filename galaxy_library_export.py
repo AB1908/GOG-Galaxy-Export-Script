@@ -205,7 +205,7 @@ def extractData(args):
 		# (User customised) sorting title, same export data sorting as in the Galaxy client
 		prepare(
 			'sortingTitle',
-			{'sortingTitle': False},
+			{'sortingTitle': args.sortingTitle},
 			dbField='SORTINGTITLE.value AS sortingTitle',
 			dbRef='MasterList AS SORTINGTITLE',
 			dbCondition='(SORTINGTITLE.releaseKey=MasterList.releaseKey) AND (SORTINGTITLE.gamePieceTypeId={})'.format(id('sortingTitle')),
@@ -274,6 +274,25 @@ def extractData(args):
 			dbCondition='(DLC.releaseKey=MasterList.releaseKey) AND (DLC.gamePieceTypeId={})'.format(id('dlcs')),
 			dbResultField='MasterDB.dlcs'
 		)
+
+		if args.isHidden:
+			prepare(
+				'isHidden',
+				{'isHidden': True},
+				dbField='UserReleaseProperties.isHidden AS isHidden',
+				dbCustomJoin='LEFT JOIN USERRELEASEPROPERTIES ON USERRELEASEPROPERTIES.releaseKey=MasterList.releaseKey',
+				dbResultField='CASE WHEN MasterDB.isHidden = 1 THEN \'True\' ELSE \'False\' END'
+			)
+
+		if args.osCompatibility:
+			prepare(
+				'osCompatibility',
+				{'osCompatibility': True},
+				dbField='OSCOMPATIBILITY.value AS osCompatibility',
+				dbRef='MasterList AS OSCOMPATIBILITY',
+				dbCondition='OSCOMPATIBILITY.releaseKey=MasterList.releaseKey AND OSCOMPATIBILITY.gamePieceTypeId={}'.format(id('osCompatibility')),
+				dbResultField='MasterDB.osCompatibility'
+			)
 
 		if args.imageBackground or args.imageSquare or args.imageVertical:
 			prepare(
@@ -348,6 +367,14 @@ def extractData(args):
 							# No title or {'title': null}
 							continue
 
+						# SortingTitle
+						if args.sortingTitle:
+							try:
+								sortingTitle = jld('sortingTitle')
+								row['sortingTitle'] = sortingTitle['title']
+							except:
+								row['sortingTitle'] = ''
+
 						# Playtime
 						includeField(result, 'gameMins', positions['playtime'], paramName='playtime')
 
@@ -396,6 +423,19 @@ def extractData(args):
 						# Tags
 						if args.tags:
 							includeField(result, 'tags', positions['tags'], fieldType=Type.LIST)
+
+						# isHidden
+						if args.isHidden:
+							includeField(result, 'isHidden', positions['isHidden'], fieldType=Type.STRING)
+
+						# osCompatibility
+						if args.osCompatibility:
+							row['osCompatibility'] = set()
+							osCompatibility = jld('osCompatibility')
+							osList = osCompatibility['supported']
+							if osList:
+								for operatingSystem in osList:
+									row['osCompatibility'].add(operatingSystem['name'])
 
 						# Set conversion, list sorting, empty value reset
 						for k,v in row.items():
@@ -468,6 +508,7 @@ if __name__ == "__main__":
 				}
 			],
 			[['-a', '--all'], ba('all', '(default) extracts all the fields')],
+			[['--sorting-title'], ba('sortingTitle', '(user customised) sorting title')],
 			[['--critics-score'], ba('criticsScore', 'critics rating score')],
 			[['--developers'], ba('developers', 'list of developers')],
 			[['--dlcs'], ba('dlcs', 'list of dlc titles for the specified game')],
@@ -480,6 +521,8 @@ if __name__ == "__main__":
 			[['--release-date'], ba('releaseDate', 'release date of the software')],
 			[['--summary'], ba('summary', 'game summary')],
 			[['--tags'], ba('tags', 'user tags')],
+			[['--hidden'], ba('isHidden', 'is gamne hidden in galaxy client')],
+			[['--os-compatibility'], ba('osCompatibility', 'list of supported operating systems')],
 			[['--themes'], ba('themes', 'game themes')],
 			[['--playtime'], ba('playtime', 'time spent playing the game')],
 			[['--py-lists'], ba('pythonLists', 'export lists as Python parseable instead of delimiter separated strings')],
