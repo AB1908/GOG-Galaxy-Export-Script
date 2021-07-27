@@ -330,7 +330,7 @@ def extractData(args):
 			if d:
 				for dlc in d:
 					dlcs.add(dlc)
-		results = natsorted(results, key=lambda r: str.casefold(r[1][positions['sortingTitle']]))
+		results = natsorted(results, key=lambda r: str.casefold(str(json.loads(r[1][positions['sortingTitle']])['title'])))
 
 		# Exclude games mistakenly treated as DLCs, such as "3 out of 10, EP2"
 		for dlc in options['TreatDLCAsGame']:
