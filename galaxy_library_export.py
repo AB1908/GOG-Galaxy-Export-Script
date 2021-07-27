@@ -382,14 +382,16 @@ def extractData(args):
 						# DLCs
 						if args.dlcs:
 							row['dlcs'] = set()
-							for dlc in jld('dlcs', True):
-								try:
-									# Check the availability of the DLC in the games list (uncertain)
-									d = next(x[1] for x in results if dlc in x[0])
-									if d:
-										row['dlcs'].add(jld('title', True, d))
-								except StopIteration:
-									pass
+							dlcList = jld('dlcs', True)
+							if dlcList:
+								for dlc in dlcList:
+									try:
+										# Check the availability of the DLC in the games list (uncertain)
+										d = next(x[1] for x in results if dlc in x[0])
+										if d:
+											row['dlcs'].add(jld('title', True, d))
+									except StopIteration:
+										pass
 
 						# Tags
 						if args.tags:
