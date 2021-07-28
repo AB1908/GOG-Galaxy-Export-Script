@@ -193,14 +193,24 @@ def extractData(args):
 		og_fields = ["""CREATE TEMP VIEW MasterDB AS SELECT DISTINCT(MasterList.releaseKey) AS releaseKey, MasterList.value AS title, PLATFORMS.value AS platformList"""]
 		og_references = [""" FROM MasterList, MasterList AS PLATFORMS"""]
 		og_joins = []
-		og_conditions = [""" WHERE ((MasterList.gamePieceTypeId={}) OR (MasterList.gamePieceTypeId={})) AND ((PLATFORMS.releaseKey=MasterList.releaseKey) AND (PLATFORMS.gamePieceTypeId={}))""".format(
-					id('originalTitle'),
+		og_conditions = [""" WHERE MasterList.gamePieceTypeId={} AND PLATFORMS.releaseKey=MasterList.releaseKey AND PLATFORMS.gamePieceTypeId={}""".format(
 					id('title'),
 					id('allGameReleases')
 				)]
 		og_order = """ ORDER BY title;"""
 		og_resultFields = ['GROUP_CONCAT(DISTINCT MasterDB.releaseKey)', 'MasterDB.title']
 		og_resultGroupBy = ['MasterDB.platformList']
+
+		# title can be customized by user, allow extraction of original title
+		if args.originalTitle:
+			prepare(
+				'originalTitle',
+				{'originalTitle': True},
+				dbField='ORIGINALTITLE.value AS originalTitle',
+				dbRef='MasterList AS ORIGINALTITLE',
+				dbCondition='ORIGINALTITLE.releaseKey=MasterList.releaseKey AND ORIGINALTITLE.gamePieceTypeId={}'.format(id('originalTitle')),
+				dbResultField='MasterDB.originalTitle'
+			)
 
 		# (User customised) sorting title, same export data sorting as in the Galaxy client
 		prepare(
@@ -230,21 +240,38 @@ def extractData(args):
 				{'platformList': True},
 			)
 
-		if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
-			prepare(
-				'metadata',
-				{
+		# add filednames of metadata and orginalMetadata
+		# this allows to order them in a way that metadata values are followed by their related originalMetadata value in the export
+		for name,condition in {
 					'criticsScore': args.criticsScore,
 					'developers': args.developers,
 					'genres': args.genres,
 					'publishers': args.publishers,
 					'releaseDate': args.releaseDate,
+					'originalReleaseDate': args.originalReleaseDate,
 					'themes': args.themes,
-				},
+				}.items():
+			if condition:
+				fieldnames.append(name)
+			
+		if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
+			prepare(
+				'metadata',
+				{}, # fieldnames are added separateley together with their related originalMetadata fields
 				dbField='METADATA.value AS metadata',
 				dbRef='MasterList AS METADATA',
-				dbCondition='(METADATA.releaseKey=MasterList.releaseKey) AND ((METADATA.gamePieceTypeId={}) OR (METADATA.gamePieceTypeId={}))'.format(id('originalMeta'), id('meta')),
+				dbCondition='METADATA.releaseKey=MasterList.releaseKey AND METADATA.gamePieceTypeId={}'.format(id('meta')),
 				dbResultField='MasterDB.metadata'
+			)
+
+		if args.originalReleaseDate:
+			prepare(
+				'originalMetadata',
+				{}, # fieldnames are added separateley together with their related metadata fields
+				dbField='ORIGINALMETADATA.value AS originalMetadata',
+				dbRef='MasterList AS ORIGINALMETADATA',
+				dbCondition='ORIGINALMETADATA.releaseKey=MasterList.releaseKey AND ORIGINALMETADATA.gamePieceTypeId={}'.format(id('originalMeta')),
+				dbResultField='MasterDB.originalMetadata'
 			)
 
 		if args.playtime:
@@ -367,6 +394,7 @@ def extractData(args):
 							# No title or {'title': null}
 							continue
 
+
 						# SortingTitle
 						if args.sortingTitle:
 							try:
@@ -374,6 +402,15 @@ def extractData(args):
 								row['sortingTitle'] = sortingTitle['title']
 							except:
 								row['sortingTitle'] = ''
+
+						# OriginalTitle
+						if args.originalTitle:
+							try:
+								originalTitle = jld('originalTitle')
+								row['originalTitle'] = originalTitle['title']
+							except:
+								row['originalTitle'] = ''
+
 
 						# Playtime
 						includeField(result, 'gameMins', positions['playtime'], paramName='playtime')
@@ -398,6 +435,11 @@ def extractData(args):
 							includeField(metadata, 'publishers')
 							includeField(metadata, 'releaseDate', fieldType=Type.DATE)
 							includeField(metadata, 'themes')
+
+						# Original metadata
+						if args.originalReleaseDate:
+							originalMetadata = jld('originalMetadata')
+							includeField(originalMetadata, 'originalReleaseDate', 'releaseDate', fieldType=Type.DATE)
 
 						# Original images
 						if args.imageBackground or args.imageSquare or args.imageVertical:
@@ -509,6 +551,7 @@ if __name__ == "__main__":
 			],
 			[['-a', '--all'], ba('all', '(default) extracts all the fields')],
 			[['--sorting-title'], ba('sortingTitle', '(user customised) sorting title')],
+			[['--title-original'], ba('originalTitle', 'original title independent of any user changes')],
 			[['--critics-score'], ba('criticsScore', 'critics rating score')],
 			[['--developers'], ba('developers', 'list of developers')],
 			[['--dlcs'], ba('dlcs', 'list of dlc titles for the specified game')],
@@ -518,7 +561,8 @@ if __name__ == "__main__":
 			[['--image-vertical'], ba('imageVertical', 'vertical cover image')],
 			[['--platforms'], ba('platforms', 'list of platforms the game is available on')],
 			[['--publishers'], ba('publishers', 'list of publishers')],
-			[['--release-date'], ba('releaseDate', 'release date of the software')],
+			[['--release-date'], ba('releaseDate', '(user customized) release date of the software')],
+			[['--release-date-original'], ba('originalReleaseDate', 'original release date independent of any user changes')],
 			[['--summary'], ba('summary', 'game summary')],
 			[['--tags'], ba('tags', 'user tags')],
 			[['--hidden'], ba('isHidden', 'is gamne hidden in galaxy client')],
