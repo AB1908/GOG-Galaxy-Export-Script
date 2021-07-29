@@ -1,5 +1,9 @@
 {
-  "TreatDLCAsGame": [
-    "epic_1317e4e3b3ed40c289dde85b194347d3"
-  ]
+	"TreatDLCAsGame": [
+		"epic_1317e4e3b3ed40c289dde85b194347d3"
+	],
+	"TreatReleaseAsDLC": {
+		"steam_290790": ["steam_357180","steam_341810"],
+		"steam_365450": ["steam_408710"]
+	}
 }
