@@ -385,7 +385,7 @@ def extractData(args):
 				writer.writeheader()
 				for (ids, result) in results:
 					# Only consider games for the list, not DLCs
-					if 0 < len([x for x in ids if x in dlcs]):
+					if not args.exportDlcDetails and 0 < len([x for x in ids if x in dlcs]):
 						continue
 
 					try:
@@ -581,12 +581,13 @@ if __name__ == "__main__":
 			[['--os-compatibility'], ba('osCompatibility', 'list of supported operating systems')],
 			[['--themes'], ba('themes', 'game themes')],
 			[['--playtime'], ba('playtime', 'time spent playing the game')],
+			[['--dlcs-details'], ba('exportDlcDetails', 'add a separate entry for each dlc with all available information to the exported csv')],
 			[['--py-lists'], ba('pythonLists', 'export lists as Python parseable instead of delimiter separated strings')],
 		],
 		description='GOG Galaxy 2 exporter: scans the local Galaxy 2 database to export a list of games and related information into a CSV'
 	)
 
-	if not args.anyOption(['delimiter', 'fileCSV', 'fileDB', 'pythonLists']):
+	if not args.anyOption(['delimiter', 'fileCSV', 'fileDB', 'pythonLists', 'exportDlcDetails']):
 		args.extractAll()
 	if exists(args.fileDB):
 		extractData(args)
