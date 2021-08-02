@@ -296,10 +296,11 @@ def extractData(args):
 		prepare(  # Grab a list of DLCs for filtering, regardless of whether we're exporting them or not
 			'dlcs',
 			{'dlcs': args.dlcs},
-			dbField='DLC.value AS dlcs',
+			# concat all dlcs of the game in one list to make sure all dlcs from the different platforms are found
+			dbField="""DLC.value AS dlcs, CASE WHEN DLC.value IS NULL OR DLC.value IN ('{"dlcs":null}', '{"dlcs":[]}') THEN NULL ELSE REPLACE(REPLACE(DLC.value, '{"dlcs":[', ''), ']}', '') END AS dlcList""",
 			dbRef='MasterList AS DLC',
 			dbCondition='(DLC.releaseKey=MasterList.releaseKey) AND (DLC.gamePieceTypeId={})'.format(id('dlcs')),
-			dbResultField='MasterDB.dlcs'
+			dbResultField="""'{"dlcs":[' || COALESCE(GROUP_CONCAT(MasterDB.dlcList), '') || ']}'"""
 		)
 
 		if args.isHidden:
