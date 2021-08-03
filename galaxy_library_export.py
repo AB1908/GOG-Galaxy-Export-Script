@@ -297,7 +297,12 @@ def extractData(args):
 			'dlcs',
 			{'dlcs': args.dlcs},
 			# concatenate all dlcs of the game in one list to make sure all dlcs from the different platforms are found
-			dbField="""DLC.value AS dlcs, CASE WHEN DLC.value IS NULL OR DLC.value IN ('{"dlcs":null}', '{"dlcs":[]}') THEN NULL ELSE REPLACE(REPLACE(DLC.value, '{"dlcs":[', ''), ']}', '') END AS dlcList""",
+			dbField="""DLC.value AS dlcs,
+						CASE
+							WHEN DLC.value IS NULL OR DLC.value IN ('{"dlcs":null}', '{"dlcs":[]}')
+							THEN NULL
+							ELSE REPLACE(REPLACE(DLC.value, '{"dlcs":[', ''), ']}', '')
+						END AS dlcList""",
 			dbRef='MasterList AS DLC',
 			dbCondition='(DLC.releaseKey=MasterList.releaseKey) AND (DLC.gamePieceTypeId={})'.format(id('dlcs')),
 			dbResultField="""'{"dlcs":[' || COALESCE(GROUP_CONCAT(MasterDB.dlcList), '') || ']}'"""
@@ -317,7 +322,12 @@ def extractData(args):
 				'osCompatibility',
 				{'osCompatibility': True},
 				# concatenate lists of operating systems because different platforms can support different systems
-				dbField="""OSCOMPATIBILITY.value AS osCompatibility, CASE WHEN OSCOMPATIBILITY.value IS NULL OR OSCOMPATIBILITY.value IN ('{"supported":[]}', '{"supported":null}') THEN NULL ELSE REPLACE(REPLACE(OSCOMPATIBILITY.value, '{"supported":[', ''), ']}', '') END AS osList""",
+				dbField="""OSCOMPATIBILITY.value AS osCompatibility,
+							CASE
+								WHEN OSCOMPATIBILITY.value IS NULL OR OSCOMPATIBILITY.value IN ('{"supported":[]}', '{"supported":null}') 
+								THEN NULL 
+								ELSE REPLACE(REPLACE(OSCOMPATIBILITY.value, '{"supported":[', ''), ']}', '')
+							END AS osList""",
 				dbRef='MasterList AS OSCOMPATIBILITY',
 				dbCondition='OSCOMPATIBILITY.releaseKey=MasterList.releaseKey AND OSCOMPATIBILITY.gamePieceTypeId={}'.format(id('osCompatibility')),
 				dbResultField="""'{"supported":[' || COALESCE(GROUP_CONCAT(MasterDB.osList), '') || ']}'"""
