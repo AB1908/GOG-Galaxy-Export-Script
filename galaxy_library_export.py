@@ -181,10 +181,10 @@ def extractData(args):
 	options = loadOptions()
 
 	with OpenDB() as cursor:
-		# Create a view of GameLinks joined on GamePieces for a full owned game data DB
+		# Create a view of ProductPurchaseDates (= purchased/added games) joined on GamePieces for a full owned game data DB
 		owned_game_database = """CREATE TEMP VIEW MasterList AS
-				SELECT GamePieces.releaseKey, GamePieces.gamePieceTypeId, GamePieces.value FROM GameLinks
-				JOIN GamePieces ON GameLinks.releaseKey = GamePieces.releaseKey;"""
+				SELECT GamePieces.releaseKey, GamePieces.gamePieceTypeId, GamePieces.value FROM ProductPurchaseDates
+				JOIN GamePieces ON ProductPurchaseDates.gameReleaseKey = GamePieces.releaseKey;"""
 
 		# Set up default queries and processing metadata, and always extract the game title along with any parameters
 		prepare.nextPos = 2
