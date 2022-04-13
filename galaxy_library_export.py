@@ -9,6 +9,7 @@ from os.path import exists
 import re
 import sqlite3
 import time
+from sys import platform
 
 class Arguments():
 	""" argparse wrapper, to reduce code verbosity """
@@ -522,7 +523,12 @@ def extractData(args):
 			return
 
 if __name__ == "__main__":
-	defaultDBlocation = 'C:\\ProgramData\\GOG.com\\Galaxy\\storage\\galaxy-2.0.db'
+	# macOS
+	if platform == "darwin":
+		defaultDBlocation = "/Users/Shared/GOG.com/Galaxy/Storage/galaxy-2.0.db"
+	# Windows
+	elif platform == "win32":
+		defaultDBlocation = "C:\\ProgramData\\GOG.com\\Galaxy\\storage\\galaxy-2.0.db"
 
 	def ba(variableName, description, defaultValue=False):
 		""" Boolean argument: creates a default boolean argument with the name of the storage variable and
