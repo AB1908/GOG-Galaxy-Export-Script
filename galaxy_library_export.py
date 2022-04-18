@@ -8,6 +8,7 @@ import sqlite3
 import time
 from enum import Enum
 from os.path import exists
+from sys import platform
 
 from natsort import natsorted
 
@@ -72,7 +73,7 @@ def extractData(args):
 
 	def loadOptions():
 		""" Loads options from `settings.json` and initialises defaults """
-		defaults = {"TreatDLCAsGame": []}
+		defaults = {"TreatDLCAsGame": [], "TreatReleaseAsDLC": {}}
 
 		# Load settings from disk
 		try:
@@ -183,10 +184,10 @@ def extractData(args):
 	options = loadOptions()
 
 	with OpenDB() as cursor:
-		# Create a view of GameLinks joined on GamePieces for a full owned game data DB
+		# Create a view of ProductPurchaseDates (= purchased/added games) joined on GamePieces for a full owned game data DB
 		owned_game_database = """CREATE TEMP VIEW MasterList AS
-				SELECT GamePieces.releaseKey, GamePieces.gamePieceTypeId, GamePieces.value FROM GameLinks
-				JOIN GamePieces ON GameLinks.releaseKey = GamePieces.releaseKey;"""
+				SELECT GamePieces.releaseKey, GamePieces.gamePieceTypeId, GamePieces.value FROM ProductPurchaseDates
+				JOIN GamePieces ON ProductPurchaseDates.gameReleaseKey = GamePieces.releaseKey;"""
 
 		# Set up default queries and processing metadata, and always extract the game title along with any parameters
 		prepare.nextPos = 2
@@ -195,8 +196,7 @@ def extractData(args):
 		og_fields = ["""CREATE TEMP VIEW MasterDB AS SELECT DISTINCT(MasterList.releaseKey) AS releaseKey, MasterList.value AS title, PLATFORMS.value AS platformList"""]
 		og_references = [""" FROM MasterList, MasterList AS PLATFORMS"""]
 		og_joins = []
-		og_conditions = [""" WHERE ((MasterList.gamePieceTypeId={}) OR (MasterList.gamePieceTypeId={})) AND ((PLATFORMS.releaseKey=MasterList.releaseKey) AND (PLATFORMS.gamePieceTypeId={}))""".format(
-					id('originalTitle'),
+		og_conditions = [""" WHERE MasterList.gamePieceTypeId={} AND PLATFORMS.releaseKey=MasterList.releaseKey AND PLATFORMS.gamePieceTypeId={}""".format(
 					id('title'),
 					id('allGameReleases')
 				)]
@@ -204,10 +204,21 @@ def extractData(args):
 		og_resultFields = ['GROUP_CONCAT(DISTINCT MasterDB.releaseKey)', 'MasterDB.title']
 		og_resultGroupBy = ['MasterDB.platformList']
 
+		# title can be customized by user, allow extraction of original title
+		if args.originalTitle:
+			prepare(
+				'originalTitle',
+				{'originalTitle': True},
+				dbField='ORIGINALTITLE.value AS originalTitle',
+				dbRef='MasterList AS ORIGINALTITLE',
+				dbCondition='ORIGINALTITLE.releaseKey=MasterList.releaseKey AND ORIGINALTITLE.gamePieceTypeId={}'.format(id('originalTitle')),
+				dbResultField='MasterDB.originalTitle'
+			)
+
 		# (User customised) sorting title, same export data sorting as in the Galaxy client
 		prepare(
 			'sortingTitle',
-			{'sortingTitle': False},
+			{'sortingTitle': args.sortingTitle},
 			dbField='SORTINGTITLE.value AS sortingTitle',
 			dbRef='MasterList AS SORTINGTITLE',
 			dbCondition='(SORTINGTITLE.releaseKey=MasterList.releaseKey) AND (SORTINGTITLE.gamePieceTypeId={})'.format(id('sortingTitle')),
@@ -232,21 +243,38 @@ def extractData(args):
 				{'platformList': True},
 			)
 
-		if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
-			prepare(
-				'metadata',
-				{
+		# add filednames of metadata and orginalMetadata
+		# this allows to order them in a way that metadata values are followed by their related originalMetadata value in the export
+		for name,condition in {
 					'criticsScore': args.criticsScore,
 					'developers': args.developers,
 					'genres': args.genres,
 					'publishers': args.publishers,
 					'releaseDate': args.releaseDate,
+					'originalReleaseDate': args.originalReleaseDate,
 					'themes': args.themes,
-				},
+				}.items():
+			if condition:
+				fieldnames.append(name)
+			
+		if args.criticsScore or args.developers or args.genres or args.publishers or args.releaseDate or args.themes:
+			prepare(
+				'metadata',
+				{}, # fieldnames are added separateley together with their related originalMetadata fields
 				dbField='METADATA.value AS metadata',
 				dbRef='MasterList AS METADATA',
-				dbCondition='(METADATA.releaseKey=MasterList.releaseKey) AND ((METADATA.gamePieceTypeId={}) OR (METADATA.gamePieceTypeId={}))'.format(id('originalMeta'), id('meta')),
+				dbCondition='METADATA.releaseKey=MasterList.releaseKey AND METADATA.gamePieceTypeId={}'.format(id('meta')),
 				dbResultField='MasterDB.metadata'
+			)
+
+		if args.originalReleaseDate:
+			prepare(
+				'originalMetadata',
+				{}, # fieldnames are added separateley together with their related metadata fields
+				dbField='ORIGINALMETADATA.value AS originalMetadata',
+				dbRef='MasterList AS ORIGINALMETADATA',
+				dbCondition='ORIGINALMETADATA.releaseKey=MasterList.releaseKey AND ORIGINALMETADATA.gamePieceTypeId={}'.format(id('originalMeta')),
+				dbResultField='MasterDB.originalMetadata'
 			)
 
 		if args.playtime:
@@ -281,11 +309,42 @@ def extractData(args):
 		prepare(  # Grab a list of DLCs for filtering, regardless of whether we're exporting them or not
 			'dlcs',
 			{'dlcs': args.dlcs},
-			dbField='DLC.value AS dlcs',
+			# concatenate all dlcs of the game in one list to make sure all dlcs from the different platforms are found
+			dbField="""DLC.value AS dlcs,
+						CASE
+							WHEN DLC.value IS NULL OR DLC.value IN ('{"dlcs":null}', '{"dlcs":[]}')
+							THEN NULL
+							ELSE REPLACE(REPLACE(DLC.value, '{"dlcs":[', ''), ']}', '')
+						END AS dlcList""",
 			dbRef='MasterList AS DLC',
 			dbCondition='(DLC.releaseKey=MasterList.releaseKey) AND (DLC.gamePieceTypeId={})'.format(id('dlcs')),
-			dbResultField='MasterDB.dlcs'
+			dbResultField="""'{"dlcs":[' || COALESCE(GROUP_CONCAT(MasterDB.dlcList), '') || ']}'"""
 		)
+
+		if args.isHidden:
+			prepare(
+				'isHidden',
+				{'isHidden': True},
+				dbField='UserReleaseProperties.isHidden AS isHidden',
+				dbCustomJoin='LEFT JOIN USERRELEASEPROPERTIES ON USERRELEASEPROPERTIES.releaseKey=MasterList.releaseKey',
+				dbResultField='CASE WHEN MasterDB.isHidden = 1 THEN \'True\' ELSE \'False\' END'
+			)
+
+		if args.osCompatibility:
+			prepare(
+				'osCompatibility',
+				{'osCompatibility': True},
+				# concatenate lists of operating systems because different platforms can support different systems
+				dbField="""OSCOMPATIBILITY.value AS osCompatibility,
+							CASE
+								WHEN OSCOMPATIBILITY.value IS NULL OR OSCOMPATIBILITY.value IN ('{"supported":[]}', '{"supported":null}') 
+								THEN NULL 
+								ELSE REPLACE(REPLACE(OSCOMPATIBILITY.value, '{"supported":[', ''), ']}', '')
+							END AS osList""",
+				dbRef='MasterList AS OSCOMPATIBILITY',
+				dbCondition='OSCOMPATIBILITY.releaseKey=MasterList.releaseKey AND OSCOMPATIBILITY.gamePieceTypeId={}'.format(id('osCompatibility')),
+				dbResultField="""'{"supported":[' || COALESCE(GROUP_CONCAT(MasterDB.osList), '') || ']}'"""
+			)
 
 		if args.imageBackground or args.imageSquare or args.imageVertical:
 			prepare(
@@ -323,11 +382,16 @@ def extractData(args):
 			if d:
 				for dlc in d:
 					dlcs.add(dlc)
-		results = natsorted(results, key=lambda r: str.casefold(r[1][positions['sortingTitle']]))
+		results = natsorted(results, key=lambda r: str.casefold(str(json.loads(r[1][positions['sortingTitle']])['title'])))
 
 		# Exclude games mistakenly treated as DLCs, such as "3 out of 10, EP2"
 		for dlc in options['TreatDLCAsGame']:
 			dlcs.discard(dlc)
+
+		# Add dlcs mistakenly treated as games, such as "Grey Goo - Emergence Campaign"
+		additionalDLCs = options['TreatReleaseAsDLC']
+		for game in additionalDLCs.keys():
+			dlcs.update(additionalDLCs[game])
 
 		# There are spurious random dlcNUMBERa entries in the library, plus a few DLCs which appear
 		# multiple times in different ways and are not attached to a game
@@ -346,7 +410,7 @@ def extractData(args):
 				writer.writeheader()
 				for (ids, result) in results:
 					# Only consider games for the list, not DLCs
-					if 0 < len([x for x in ids if x in dlcs]):
+					if not args.exportDlcDetails and 0 < len([x for x in ids if x in dlcs]):
 						continue
 
 					try:
@@ -359,6 +423,24 @@ def extractData(args):
 						except:
 							# No title or {'title': null}
 							continue
+
+
+						# SortingTitle
+						if args.sortingTitle:
+							try:
+								sortingTitle = jld('sortingTitle')
+								row['sortingTitle'] = sortingTitle['title']
+							except:
+								row['sortingTitle'] = ''
+
+						# OriginalTitle
+						if args.originalTitle:
+							try:
+								originalTitle = jld('originalTitle')
+								row['originalTitle'] = originalTitle['title']
+							except:
+								row['originalTitle'] = ''
+
 
 						# Playtime
 						includeField(result, 'gameMins', positions['playtime'], paramName='playtime')
@@ -387,6 +469,11 @@ def extractData(args):
 							includeField(metadata, 'releaseDate', fieldType=Type.DATE)
 							includeField(metadata, 'themes')
 
+						# Original metadata
+						if args.originalReleaseDate:
+							originalMetadata = jld('originalMetadata')
+							includeField(originalMetadata, 'originalReleaseDate', 'releaseDate', fieldType=Type.DATE)
+
 						# Original images
 						if args.imageBackground or args.imageSquare or args.imageVertical:
 							images = jld('images')
@@ -397,7 +484,16 @@ def extractData(args):
 						# DLCs
 						if args.dlcs:
 							row['dlcs'] = set()
-							for dlc in jld('dlcs', True):
+							dlcList = jld('dlcs', True)
+							if dlcList == None:
+								dlcList = []
+							if options["TreatReleaseAsDLC"]:
+								rkeys = result[positions['releaseKey']].split(',')
+								for key in rkeys:
+									if options["TreatReleaseAsDLC"].get(key) != None:
+										dlcList.extend(options["TreatReleaseAsDLC"][key])
+								
+							for dlc in dlcList:
 								try:
 									# Check the availability of the DLC in the games list (uncertain)
 									d = next(x[1] for x in results if dlc in x[0])
@@ -409,6 +505,19 @@ def extractData(args):
 						# Tags
 						if args.tags:
 							includeField(result, 'tags', positions['tags'], fieldType=Type.LIST)
+
+						# isHidden
+						if args.isHidden:
+							includeField(result, 'isHidden', positions['isHidden'], fieldType=Type.STRING)
+
+						# osCompatibility
+						if args.osCompatibility:
+							row['osCompatibility'] = set()
+							osCompatibility = jld('osCompatibility')
+							osList = osCompatibility['supported']
+							if osList:
+								for operatingSystem in osList:
+									row['osCompatibility'].add(operatingSystem['name'])
 
 						# Set conversion, list sorting, empty value reset
 						for k,v in row.items():
@@ -429,7 +538,12 @@ def extractData(args):
 			return
 
 if __name__ == "__main__":
-	defaultDBlocation = 'C:\\ProgramData\\GOG.com\\Galaxy\\storage\\galaxy-2.0.db'
+	# macOS
+	if platform == "darwin":
+		defaultDBlocation = "/Users/Shared/GOG.com/Galaxy/Storage/galaxy-2.0.db"
+	# Windows
+	elif platform == "win32":
+		defaultDBlocation = "C:\\ProgramData\\GOG.com\\Galaxy\\storage\\galaxy-2.0.db"
 
 	def ba(variableName, description, defaultValue=False):
 		""" Boolean argument: creates a default boolean argument with the name of the storage variable and
@@ -481,6 +595,8 @@ if __name__ == "__main__":
 				}
 			],
 			[['-a', '--all'], ba('all', '(default) extracts all the fields')],
+			[['--sorting-title'], ba('sortingTitle', '(user customised) sorting title')],
+			[['--title-original'], ba('originalTitle', 'original title independent of any user changes')],
 			[['--critics-score'], ba('criticsScore', 'critics rating score')],
 			[['--developers'], ba('developers', 'list of developers')],
 			[['--dlcs'], ba('dlcs', 'list of dlc titles for the specified game')],
@@ -490,18 +606,22 @@ if __name__ == "__main__":
 			[['--image-vertical'], ba('imageVertical', 'vertical cover image')],
 			[['--platforms'], ba('platforms', 'list of platforms the game is available on')],
 			[['--publishers'], ba('publishers', 'list of publishers')],
-			[['--release-date'], ba('releaseDate', 'release date of the software')],
+			[['--release-date'], ba('releaseDate', '(user customized) release date of the software')],
+			[['--release-date-original'], ba('originalReleaseDate', 'original release date independent of any user changes')],
 			[['--summary'], ba('summary', 'game summary')],
 			[['--tags'], ba('tags', 'user tags')],
+			[['--hidden'], ba('isHidden', 'is gamne hidden in galaxy client')],
+			[['--os-compatibility'], ba('osCompatibility', 'list of supported operating systems')],
 			[['--themes'], ba('themes', 'game themes')],
 			[['--playtime'], ba('playtime', 'time spent playing the game')],
 			[['--last-played'], ba('lastPlayed', 'last time the game was played')],
+			[['--dlcs-details'], ba('exportDlcDetails', 'add a separate entry for each dlc with all available information to the exported csv')],
 			[['--py-lists'], ba('pythonLists', 'export lists as Python parseable instead of delimiter separated strings')],
 		],
 		description='GOG Galaxy 2 exporter: scans the local Galaxy 2 database to export a list of games and related information into a CSV'
 	)
 
-	if not args.anyOption(['delimiter', 'fileCSV', 'fileDB', 'pythonLists']):
+	if not args.anyOption(['delimiter', 'fileCSV', 'fileDB', 'pythonLists', 'exportDlcDetails']):
 		args.extractAll()
 	if exists(args.fileDB):
 		extractData(args)
