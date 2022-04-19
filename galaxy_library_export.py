@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 
 import csv
-from enum import Enum
 import json
-from natsort import natsorted
-from os.path import exists
 import re
 import sqlite3
 import time
+from enum import Enum
+from os.path import exists
 from sys import platform
+
+from natsort import natsorted
+
 
 class Arguments():
 	""" argparse wrapper, to reduce code verbosity """
@@ -285,6 +287,16 @@ def extractData(args):
 				dbResultField='sum(MasterDB.time)'
 			)
 
+		if args.lastPlayed:
+			prepare(
+				'lastPlayed',
+				{'lastPlayed': True},
+				dbField='LASTPLAYEDDATES.lastPlayedDate as lastPlayed',
+				dbCustomJoin='LEFT JOIN LASTPLAYEDDATES ON LASTPLAYEDDATES.gameReleaseKey=MasterList.releaseKey',
+				dbResultField='MasterDB.lastPlayed'
+			)
+
+
 		if args.tags:
 			prepare(
 				'tags',
@@ -433,6 +445,9 @@ def extractData(args):
 						# Playtime
 						includeField(result, 'gameMins', positions['playtime'], paramName='playtime')
 
+						# LastPlayed
+						includeField(result, 'lastPlayed', positions['lastPlayed'])
+
 						# Summaries
 						includeField(result, 'summary', fieldType=Type.STRING_JSON)
 
@@ -575,7 +590,7 @@ if __name__ == "__main__":
 					'type': str,
 					'required': False,
 					'metavar': 'CHARACTER',
-					'help': 'CSV field separator, defaults to comma',
+					'help': 'CSV field separator, defaults to tab',
 					'dest': 'delimiter',
 				}
 			],
@@ -599,6 +614,7 @@ if __name__ == "__main__":
 			[['--os-compatibility'], ba('osCompatibility', 'list of supported operating systems')],
 			[['--themes'], ba('themes', 'game themes')],
 			[['--playtime'], ba('playtime', 'time spent playing the game')],
+			[['--last-played'], ba('lastPlayed', 'last time the game was played')],
 			[['--dlcs-details'], ba('exportDlcDetails', 'add a separate entry for each dlc with all available information to the exported csv')],
 			[['--py-lists'], ba('pythonLists', 'export lists as Python parseable instead of delimiter separated strings')],
 		],
