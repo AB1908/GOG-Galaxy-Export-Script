@@ -2,6 +2,22 @@
 
 This script helps a user export their GOG Galaxy 2.0 Library.
 
+## TL;DR / brief how to use
+
+1. Install Python 3, through Windows Store or manually if you prefer
+2. Download the [source files](https://github.com/AB1908/GOG-Galaxy-Export-Script/archive/refs/heads/master.zip) and unzip it in a directory of your choice
+3. Open the command prompt (`Win+R`, write `cmd` and press Enter) and enter the directory you chose with `cd /d DIRECTORY`, replacing `DIRECTORY` with the directory in which `galaxy_library_export.py` resides
+4. Install python's requirements:
+   ```
+   python -m pip install csv natsort
+   ```
+5. Export the CSV with:
+   ```
+   python galaxy_library_export.py
+   ```
+
+By default this scripts export everything it can into the CSV. If you would like to customize the results, read below.
+
 ## Usage
 
 Through the use of command line parameters, you can decide what data you want exported to the CSV. Some of the options include the list of platforms (`--platforms`), playtime in minutes (`--playtime`), developers, publishers, genres and much more. You can read the help manual by invoking the script without parameters, to find an up to date list of all the possible export options.
