@@ -11,7 +11,7 @@ dates = []
 games = []
 
 # Open csv file to reader
-with open('gameDB.csv', 'r', encoding='utf-8') as csv_file:
+with open('../gameDB.csv', 'r', encoding='utf-8') as csv_file:
     reader = csv.reader(csv_file)
 
     # The name of the game is on the first part of the row
